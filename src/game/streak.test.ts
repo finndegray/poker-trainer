@@ -53,3 +53,15 @@ describe('dayProgress', () => {
     expect(dayProgress({ '2026-10-13': 21 }, '2026-10-13').done).toBe(true);
   });
 });
+
+describe('shiftDateKey validation', () => {
+  it('rejects impossible calendar dates', () => {
+    expect(() => shiftDateKey('2026-02-31', 1)).toThrow(/Ungültiges Datum/);
+    expect(() => shiftDateKey('2026-13-01', 1)).toThrow(/Ungültiges Datum/);
+  });
+
+  it('rejects non-integer day offsets', () => {
+    expect(() => shiftDateKey('2026-10-13', Number.NaN)).toThrow(/ganze Zahl/);
+    expect(() => shiftDateKey('2026-10-13', 1.5)).toThrow(/ganze Zahl/);
+  });
+});

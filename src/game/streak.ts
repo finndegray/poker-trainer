@@ -10,12 +10,17 @@ export function localDateKey(d: Date): DateKey {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// UTC arithmetic avoids daylight-saving shifts; the key itself is a local calendar date.
+const formatUtc = (t: Date): DateKey => `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
+
 export function shiftDateKey(key: DateKey, days: number): DateKey {
+  if (!Number.isInteger(days)) throw new Error(`Tagesversatz muss eine ganze Zahl sein: ${days}`);
   const m = KEY_PATTERN.exec(key);
   if (!m) throw new Error(`Ungültiges Datum: ${key}`);
-  // UTC arithmetic avoids daylight-saving shifts; the key itself is a local calendar date.
-  const t = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + days));
-  return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
+  const [year, month, day] = [Number(m[1]), Number(m[2]) - 1, Number(m[3])];
+  // Date.UTC silently rolls over impossible dates (2026-02-31 -> 2026-03-03); the round-trip catches that.
+  if (formatUtc(new Date(Date.UTC(year, month, day))) !== key) throw new Error(`Ungültiges Datum: ${key}`);
+  return formatUtc(new Date(Date.UTC(year, month, day + days)));
 }
 
 export function incrementDay(days: DayCounts, key: DateKey, by = 1): Record<DateKey, number> {

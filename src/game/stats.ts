@@ -1,6 +1,7 @@
 import { HAND_COUNT } from '../engine/cards';
 import type { Action, Spot, Verdict } from '../engine/pushfold';
 import { type CategoryKey, type SpotKind, type StackBucket, categoryKey, stackBucketOf } from '../engine/spot-generator';
+import type { Position } from '../engine/positions';
 import { type DateKey, shiftDateKey } from './streak';
 
 export type DecisionMode = 'training' | 'daily' | 'run';
@@ -29,21 +30,25 @@ export function accuracy(records: readonly DecisionRecord[]): Accuracy {
   return { correct, total: records.length, rate: records.length > 0 ? correct / records.length : null };
 }
 
+function groupBy<K, T>(items: readonly T[], keyOf: (item: T) => K): Map<K, T[]> {
+  const groups = new Map<K, T[]>();
+  for (const item of items) {
+    const key = keyOf(item);
+    const list = groups.get(key);
+    if (list) list.push(item);
+    else groups.set(key, [item]);
+  }
+  return groups;
+}
+
 export function accuracyBy<K extends string>(
   records: readonly DecisionRecord[],
   keyOf: (r: DecisionRecord) => K,
 ): Map<K, Accuracy> {
-  const groups = new Map<K, DecisionRecord[]>();
-  for (const r of records) {
-    const key = keyOf(r);
-    const list = groups.get(key);
-    if (list) list.push(r);
-    else groups.set(key, [r]);
-  }
-  return new Map([...groups].map(([key, list]) => [key, accuracy(list)]));
+  return new Map([...groupBy(records, keyOf)].map(([key, list]) => [key, accuracy(list)]));
 }
 
-export const byPosition = (r: DecisionRecord): string => r.spot.position;
+export const byPosition = (r: DecisionRecord): Position => r.spot.position;
 export const byStackBucket = (r: DecisionRecord): StackBucket => stackBucketOf(r.spot.stack);
 export const byKind = (r: DecisionRecord): SpotKind => r.spot.kind;
 
@@ -72,15 +77,8 @@ export function weeklyTrend(records: readonly DecisionRecord[], todayKey: DateKe
 
 export function adaptiveWeights(records: readonly DecisionRecord[]): Map<CategoryKey, number> {
   const sorted = [...records].sort((a, b) => a.ts - b.ts);
-  const groups = new Map<CategoryKey, DecisionRecord[]>();
-  for (const r of sorted) {
-    const key = categoryKey(r.spot);
-    const list = groups.get(key);
-    if (list) list.push(r);
-    else groups.set(key, [r]);
-  }
   const weights = new Map<CategoryKey, number>();
-  for (const [key, list] of groups) {
+  for (const [key, list] of groupBy(sorted, (r) => categoryKey(r.spot))) {
     const window = list.slice(-ADAPTIVE_WINDOW);
     const errorRate = window.filter((r) => !isCorrect(r)).length / window.length;
     weights.set(key, 1 + ADAPTIVE_BOOST * errorRate);

@@ -84,3 +84,21 @@ describe('endphase run', () => {
     expect(() => nextRunSpot(data, play(['wrong', 'wrong', 'wrong']), rng)).toThrow();
   });
 });
+
+describe('endphase run busts', () => {
+  it('busts on the last spot of a level without advancing', () => {
+    const s = play(['correct', 'correct', 'wrong', 'wrong', 'wrong']);
+    expect(s).toMatchObject({ status: 'busted', levelIndex: 0, lives: 0, answered: 5 });
+    expect(runPlacement(s)).toBe(2000);
+    const later = play([...correct(10), 'correct', 'wrong', 'correct', 'wrong', 'wrong']);
+    expect(later).toMatchObject({ status: 'busted', levelIndex: 2, answered: 15 });
+  });
+
+  it('busts on spot 40 instead of reaching the final table', () => {
+    const s = play([...correct(37), 'wrong', 'wrong', 'wrong']);
+    expect(s).toMatchObject({ status: 'busted', levelIndex: 7, lives: 0, answered: 40 });
+    expect(completedLevels(s)).toBe(7);
+    expect(runPlacement(s)).toBe(10);
+    expect(runBonusXp(s)).toBe(70);
+  });
+});

@@ -7,6 +7,9 @@ import { summarize } from './summary';
 import { type TournamentKind, detectTournamentKind } from './tournament-kind';
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
+/** Sum of the declared sizes of all accepted ZIP entries; checked before anything is inflated. */
+export const MAX_UNZIPPED_BYTES = 50 * 1024 * 1024;
+export const MAX_ZIP_ENTRIES = 1000;
 export const MAX_HANDS_PER_IMPORT = 20_000;
 /** Hands analysed between two pauses that let the browser paint the progress bar. */
 export const HANDS_PER_CHUNK = 25;
@@ -28,6 +31,12 @@ const isZip = (file: ImportFile) =>
   file.name.toLowerCase().endsWith('.zip') || (file.bytes[0] === 0x50 && file.bytes[1] === 0x4b && file.bytes[2] === 0x03 && file.bytes[3] === 0x04);
 const isTxt = (name: string) => name.toLowerCase().endsWith('.txt');
 const TOO_BIG = 'Datei zu groß (über 20 MB)';
+const ZIP_TOO_BIG = 'ZIP entpackt zu groß (über 50 MB)';
+const ZIP_TOO_MANY = 'ZIP enthält zu viele Dateien (über 1000)';
+/** Thrown from the unzip filter to abort before any entry is inflated. */
+class ZipLimitError extends Error {}
+/** macOS resource-fork leftovers: silently ignored. */
+const isMacJunk = (path: string) => path.startsWith('__MACOSX/') || (path.split('/').pop() ?? '').startsWith('._');
 
 /** Unpacks ZIPs (only .txt entries, nothing is executed) and decodes text files; problems are reported per file. */
 export function extractTexts(files: readonly ImportFile[]): { texts: ImportText[]; skipped: SkippedHand[] } {
@@ -41,19 +50,24 @@ export function extractTexts(files: readonly ImportFile[]): { texts: ImportText[
     if (isZip(file)) {
       let entries: Record<string, Uint8Array>;
       const tooBig: string[] = [];
+      let accepted = 0;
+      let total = 0;
       try {
         entries = unzipSync(file.bytes, {
           filter: (entry) => {
-            if (!isTxt(entry.name)) return false;
+            if (!isTxt(entry.name) || isMacJunk(entry.name)) return false;
             if (entry.originalSize > MAX_FILE_BYTES) {
               tooBig.push(entry.name);
               return false;
             }
+            if (++accepted > MAX_ZIP_ENTRIES) throw new ZipLimitError(ZIP_TOO_MANY);
+            total += entry.originalSize;
+            if (total > MAX_UNZIPPED_BYTES) throw new ZipLimitError(ZIP_TOO_BIG);
             return true;
           },
         });
-      } catch {
-        skipped.push({ id: file.name, reason: 'ZIP-Datei nicht lesbar' });
+      } catch (error) {
+        skipped.push({ id: file.name, reason: error instanceof ZipLimitError ? error.message : 'ZIP-Datei nicht lesbar' });
         continue;
       }
       for (const name of tooBig) skipped.push({ id: name, reason: TOO_BIG });

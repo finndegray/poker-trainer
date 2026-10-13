@@ -10,6 +10,8 @@ import {
   ImportLimitError,
   MAX_FILE_BYTES,
   MAX_HANDS_PER_IMPORT,
+  MAX_UNZIPPED_BYTES,
+  MAX_ZIP_ENTRIES,
   type ImportProgress,
   analyzePlan,
   countSkipped,
@@ -46,6 +48,42 @@ describe('extractTexts', () => {
       { id: 'big.txt', reason: 'Datei zu groß (über 20 MB)' },
       { id: 'broken.zip', reason: 'ZIP-Datei nicht lesbar' },
     ]);
+  });
+
+  it('rejects a ZIP whose entries unpack to more than the aggregate cap, without importing anything', () => {
+    const chunk = new Uint8Array(18 * 1024 * 1024);
+    const zip = zipSync({ 'a.txt': chunk, 'b.txt': chunk, 'c.txt': chunk, 'd.txt': strToU8(bounty) });
+    expect(MAX_UNZIPPED_BYTES).toBe(50 * 1024 * 1024);
+    const result = extractTexts([{ name: 'bomb.zip', bytes: zip }]);
+    expect(result.texts).toEqual([]);
+    expect(result.skipped).toEqual([{ id: 'bomb.zip', reason: 'ZIP entpackt zu groß (über 50 MB)' }]);
+  });
+
+  it('rejects a ZIP with too many entries', () => {
+    const entries: Record<string, Uint8Array> = {};
+    for (let i = 0; i <= MAX_ZIP_ENTRIES; i++) entries[`f${i}.txt`] = strToU8('x');
+    const result = extractTexts([{ name: 'many.zip', bytes: zipSync(entries) }]);
+    expect(result.texts).toEqual([]);
+    expect(result.skipped).toEqual([{ id: 'many.zip', reason: 'ZIP enthält zu viele Dateien (über 1000)' }]);
+  });
+
+  it('accepts exactly the maximum number of entries', () => {
+    const entries: Record<string, Uint8Array> = {};
+    for (let i = 0; i < MAX_ZIP_ENTRIES; i++) entries[`f${i}.txt`] = strToU8('x');
+    expect(extractTexts([{ name: 'ok.zip', bytes: zipSync(entries) }]).texts).toHaveLength(MAX_ZIP_ENTRIES);
+  });
+
+  it('silently ignores macOS junk entries and does not count them', () => {
+    const zip = zipSync({ 'a.txt': strToU8(bounty), '__MACOSX/b.txt': strToU8('junk'), 'dir/._c.txt': strToU8('junk'), '__MACOSX/._a.txt': strToU8('junk') });
+    const result = extractTexts([{ name: 'mac.zip', bytes: zip }]);
+    expect(result.texts.map((t) => t.name)).toEqual(['a.txt']);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it('still imports a text file with a UTF-8 BOM', () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...strToU8(bounty)]);
+    const result = extractTexts([{ name: 'bom.txt', bytes }]);
+    expect(planImport(result.texts, new Set()).tournaments.size).toBeGreaterThan(0);
   });
 });
 

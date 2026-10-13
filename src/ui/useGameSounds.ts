@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { useGame } from './GameContext';
 import type { SoundPlayer } from './sound';
 
+const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
+
 export function useGameSounds(player: SoundPlayer): void {
   const game = useGame();
   const on = game.save.profile.soundOn;
@@ -11,11 +13,10 @@ export function useGameSounds(player: SoundPlayer): void {
 
   useEffect(() => {
     const unlock = () => player.unlock();
-    window.addEventListener('pointerdown', unlock);
-    window.addEventListener('keydown', unlock);
+    // iOS only allows audio from touchend/click; capture phase so stopPropagation elsewhere cannot block it.
+    for (const type of UNLOCK_EVENTS) window.addEventListener(type, unlock, { capture: true });
     return () => {
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
+      for (const type of UNLOCK_EVENTS) window.removeEventListener(type, unlock, { capture: true });
     };
   }, [player]);
 

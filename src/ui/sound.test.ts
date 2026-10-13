@@ -49,6 +49,35 @@ describe('createSoundPlayer', () => {
     expect(started).toEqual(SOUND_NOTES.rankup.map((n) => n.freq));
   });
 
+  it('survives a failing audio context and retries on the next gesture', () => {
+    const { ctx, started } = fakeContext();
+    let attempts = 0;
+    const player = createSoundPlayer(() => {
+      attempts++;
+      if (attempts === 1) throw new Error('NotAllowedError');
+      return ctx;
+    });
+    expect(() => player.unlock()).not.toThrow();
+    player.play('deal');
+    expect(started).toEqual([]);
+    player.unlock();
+    player.unlock();
+    expect(attempts).toBe(2);
+    player.play('deal');
+    expect(started).toEqual([SOUND_NOTES.deal[0].freq]);
+  });
+
+  it('retries when no context could be created', () => {
+    let attempts = 0;
+    const player = createSoundPlayer(() => {
+      attempts++;
+      return null;
+    });
+    player.unlock();
+    player.unlock();
+    expect(attempts).toBe(2);
+  });
+
   it('copes without audio support', () => {
     const player = createSoundPlayer(() => null);
     player.unlock();

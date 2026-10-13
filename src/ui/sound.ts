@@ -41,12 +41,15 @@ const SILENCE = 0.0001;
 
 export function createSoundPlayer(factory: () => AudioContextLike | null): SoundPlayer {
   let ctx: AudioContextLike | null = null;
-  let unlocked = false;
   return {
     unlock() {
-      if (!unlocked) {
-        unlocked = true;
-        ctx = factory();
+      // Until a context exists, every gesture tries again: browsers may refuse creation outside a gesture.
+      if (!ctx) {
+        try {
+          ctx = factory();
+        } catch {
+          ctx = null;
+        }
       }
       void ctx?.resume?.().catch(() => {});
     },

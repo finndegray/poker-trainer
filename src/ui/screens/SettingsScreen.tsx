@@ -38,7 +38,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
     setKeys([...list].reverse());
   }, [store]);
   useEffect(() => {
-    void refresh();
+    refresh().catch(() => setMessage('Sicherungen konnten nicht geladen werden.'));
   }, [refresh]);
 
   const exportNow = () =>
@@ -51,17 +51,28 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
     if (!window.confirm('Aktuellen Spielstand ersetzen? Er wird vorher als Sicherung abgelegt.')) return;
     try {
       await store.importState(await readText(chosen));
-      setMessage('Spielstand importiert.');
-      await refresh();
     } catch (error) {
       setMessage(`Import fehlgeschlagen: ${errorText(error)}`);
+      return;
+    }
+    setMessage('Spielstand importiert.');
+    // The import itself succeeded; a failing list must not be reported as a failed import.
+    try {
+      await refresh();
+    } catch {
+      setMessage('Spielstand importiert. Die Liste der Sicherungen konnte nicht geladen werden.');
     }
   };
 
   const download = async (key: string) => {
-    const raw = await store.getBackups().read(key);
-    if (raw !== undefined) {
-      downloadText(`poker-trainer-sicherung-${key.slice(BACKUP_PREFIX.length, BACKUP_PREFIX.length + 10)}.json`, raw);
+    try {
+      const raw = await store.getBackups().read(key);
+      if (raw === undefined) return;
+      const date = new Date(key.slice(BACKUP_PREFIX.length));
+      const day = Number.isNaN(date.getTime()) ? key.slice(BACKUP_PREFIX.length, BACKUP_PREFIX.length + 10) : localDateKey(date);
+      downloadText(`poker-trainer-sicherung-${day}.json`, raw);
+    } catch (error) {
+      setMessage(`Download fehlgeschlagen: ${errorText(error)}`);
     }
   };
 
@@ -90,7 +101,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
           <input
             type="checkbox"
             checked={game.save.profile.soundOn}
-            disabled={game.info.readOnly}
+            disabled={!canWrite}
             onChange={(event) => store.setSound(event.target.checked)}
           />
           Sounds abspielen

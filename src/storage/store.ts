@@ -53,6 +53,12 @@ export async function listBackups(backend: KeyValueBackend): Promise<string[]> {
 
 export const readBackup = (backend: KeyValueBackend, key: string): Promise<string | undefined> => backend.get(key);
 
+export async function writeBackup(backend: KeyValueBackend, raw: string, now: Date): Promise<string> {
+  const key = `${BACKUP_PREFIX}${now.toISOString()}`;
+  await backend.set(key, raw);
+  return key;
+}
+
 export async function deleteBackup(backend: KeyValueBackend, key: string): Promise<void> {
   if (!key.startsWith(BACKUP_PREFIX)) throw new Error(`Schlüssel ${key} ist kein Backup`);
   await backend.del(key);

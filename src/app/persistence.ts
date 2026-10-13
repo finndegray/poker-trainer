@@ -1,8 +1,21 @@
 import type { SaveState } from '../storage/schema';
-import { type KeyValueBackend, type LoadResult, indexedDbBackend, loadState, memoryBackend, saveState } from '../storage/store';
+import {
+  type KeyValueBackend,
+  type LoadResult,
+  deleteBackup,
+  indexedDbBackend,
+  listBackups,
+  loadState,
+  memoryBackend,
+  readBackup,
+  saveState,
+  writeBackup,
+} from '../storage/store';
 import { SaveQueue } from './save-queue';
 
 export const WRITER_LOCK = 'poker-trainer-writer';
+
+const notWritable = (): Error => new Error('Dieser Tab darf gerade nicht speichern.');
 
 export type LockLike = {
   request(name: string, options: { ifAvailable?: boolean }, callback: (lock: unknown) => Promise<void>): Promise<unknown>;
@@ -14,6 +27,12 @@ export type PersistenceInfo = {
   otherTabActive: boolean;
   corruptBackup: { key: string; raw: string } | null;
 };
+export type BackupApi = {
+  list(): Promise<string[]>;
+  read(key: string): Promise<string | undefined>;
+  remove(key: string): Promise<void>;
+  create(raw: string): Promise<string>;
+};
 export type Persistence = {
   initial: SaveState;
   info: PersistenceInfo;
@@ -21,6 +40,8 @@ export type Persistence = {
   flush(): Promise<void>;
   /** Called once this tab becomes the writer after another tab released the lock. */
   onWriterAcquired(listener: (fresh: SaveState) => void): () => void;
+  /** Manual and automatic backups of the save, e.g. before an import. */
+  backups: BackupApi;
 };
 export type PersistenceEnv = {
   createBackend: () => KeyValueBackend;
@@ -116,6 +137,12 @@ export async function openPersistence(env: PersistenceEnv): Promise<Persistence>
       if (writable) queue.schedule(state);
     },
     flush: () => queue.flush(),
+    backups: {
+      list: () => listBackups(backend),
+      read: (key) => readBackup(backend, key),
+      remove: (key) => (writable ? deleteBackup(backend, key) : Promise.reject(notWritable())),
+      create: (raw) => (writable ? writeBackup(backend, raw, env.now()) : Promise.reject(notWritable())),
+    },
     onWriterAcquired(listener) {
       // A listener that subscribes after the hand-over still learns about it.
       if (acquiredState) listener(acquiredState);

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_DECISIONS, SaveFormatError, emptyState, serialize, type SaveState } from './schema';
 import {
   BACKUP_PREFIX, SAVE_KEY, deleteBackup, indexedDbBackend, listBackups, loadState, memoryBackend, readBackup, saveState,
-  type KeyValueBackend,
+  writeBackup, type KeyValueBackend,
 } from './store';
 
 const now = new Date('2026-10-13T10:00:00Z');
@@ -118,5 +118,15 @@ describe('indexedDbBackend keys / del', () => {
     await backend.del('a');
     expect(await backend.get('a')).toBeUndefined();
     expect(await backend.keys()).toEqual([`${BACKUP_PREFIX}x`]);
+  });
+});
+
+describe('writeBackup', () => {
+  it('stores the raw text under a timestamped backup key', async () => {
+    const backend = memoryBackend();
+    const key = await writeBackup(backend, '{"alt":true}', new Date('2026-10-13T12:00:00Z'));
+    expect(key).toBe(`${BACKUP_PREFIX}2026-10-13T12:00:00.000Z`);
+    expect(await backend.get(key)).toBe('{"alt":true}');
+    expect(await listBackups(backend)).toEqual([key]);
   });
 });

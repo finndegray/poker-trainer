@@ -8,8 +8,9 @@ import { ANALYSIS_VERSION, type HeroDecision, analyzeHand } from './analysis';
 import bounty from './fixtures/bounty.txt?raw';
 import dailyClassic from './fixtures/daily-classic.txt?raw';
 import steps from './fixtures/step-satellites.txt?raw';
+import { walkHand } from './hand-model';
 import { HERO, parseHand, parseHistory } from './parse';
-import { type DecisionRating, UNRATED_TEXT, modelFor } from './preflop';
+import { type DecisionRating, UNRATED_TEXT, modelFor, ratePreflopDecision } from './preflop';
 import { type TestHandOptions, foldsBetween, ggHand } from './test-hands';
 
 // Hands with an index below 84 shove/call profitably, the rest fold (same fixture as the UI tests).
@@ -85,6 +86,16 @@ describe('chart spots (more than 20 BB)', () => {
     expect(r[2]).toEqual({ model: 'unrated', reason: 'postflopPending' });
   });
 
+  it('does not grade a call of a 3-bet shove with the vs3bet chart', () => {
+    const open = [...foldsBetween('UTG', 'CO'), 'Hero: raises 120 to 220'];
+    const allIn = rate({ hero: 'CO', heroCards: 'Ah Ad', stacksBb: { CO: 30, BTN: 30 }, lines: [...open, 'BTN: raises 2,780 to 3,000 and is all-in', 'SB: folds', 'BB: folds', 'Hero: calls 2,780 and is all-in'] });
+    expect(allIn[1]).toEqual({ model: 'unrated', reason: 'deepAllIn' });
+    const ninety = rate({ hero: 'CO', heroCards: 'Ah Ad', stacksBb: { CO: 40, BTN: 40 }, lines: [...open, 'BTN: raises 3,380 to 3,600', 'SB: folds', 'BB: folds', 'Hero: calls 3,380'] });
+    expect(ninety[1]).toEqual({ model: 'unrated', reason: 'deepAllIn' });
+    const foldToShove = rate({ hero: 'CO', stacksBb: { CO: 30, BTN: 30 }, lines: [...open, 'BTN: raises 2,780 to 3,000 and is all-in', 'SB: folds', 'BB: folds', 'Hero: folds'] });
+    expect(foldToShove[1]).toEqual({ model: 'unrated', reason: 'deepAllIn' });
+  });
+
   it('marks charts as an approximation when the stack is more than 25 % away', () => {
     const r = first({ hero: 'BTN', stacksBb: { BTN: 28 }, lines: [...foldsBetween('UTG', 'BTN'), 'Hero: folds', 'SB: folds'] });
     expect(r).toMatchObject({ model: 'chart', spot: { stack: 40 }, effectiveBb: 28, approximation: true });
@@ -116,6 +127,15 @@ describe('not rated, with a reason', () => {
     const lines = [...foldsBetween('UTG', 'CO'), 'CO: raises 2,900 to 3,000 and is all-in', 'Hero: folds'];
     expect(unrated({ hero: 'BTN', stacksBb: { CO: 30, BTN: 40 }, lines })).toEqual({ model: 'unrated', reason: 'deepAllIn' });
   });
+  it('positions that cannot be derived', () => {
+    const hand = parseHand(ggHand({ hero: 'BTN', lines: [...foldsBetween('UTG', 'BTN'), 'Hero: folds', 'SB: folds'] }));
+    const index = hand.events.findIndex((e) => e.type === 'action' && e.player === HERO);
+    const state = walkHand(hand, null)[index];
+    expect(ratePreflopDecision(hand, index, state, null, data)).toEqual({ model: 'unrated', reason: 'positions' });
+  });
+  it('a spot the model does not cover (first action of the big blind)', () => {
+    expect(unrated({ hero: 'BB', lines: ['SB: folds', 'Hero: raises 200 to 300'] })).toEqual({ model: 'unrated', reason: 'otherSpot' });
+  });
   it('other table sizes and missing hole cards', () => {
     const lines = [...foldsBetween('UTG', 'BTN'), 'Hero: folds', 'SB: folds'];
     expect(unrated({ hero: 'BTN', tableSize: 9, lines })).toEqual({ model: 'unrated', reason: 'tableSize' });
@@ -123,7 +143,7 @@ describe('not rated, with a reason', () => {
   });
   it('every reason has a German text', () => {
     expect(UNRATED_TEXT.postflopPending).toBe('Postflop-Bewertung folgt');
-    expect(UNRATED_TEXT.shortNotPushFold).toBe('Raise oder Call mit höchstens 20 BB (kein Push/Fold-Spot)');
+    expect(UNRATED_TEXT.shortNotPushFold).toBe('Spot mit höchstens 20 BB ohne All-in (kein Push/Fold-Spot)');
     expect(Object.values(UNRATED_TEXT).every((t) => t.length > 0)).toBe(true);
   });
 });

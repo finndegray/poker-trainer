@@ -37,7 +37,7 @@ export const UNRATED_TEXT: Record<UnratedReason, string> = {
   squeeze: 'Squeeze',
   multiRaise: 'Mehrere Raises vor dir',
   deepPot: '4-Bet-Pot und tiefer',
-  shortNotPushFold: 'Raise oder Call mit höchstens 20 BB (kein Push/Fold-Spot)',
+  shortNotPushFold: 'Spot mit höchstens 20 BB ohne All-in (kein Push/Fold-Spot)',
   deepAllIn: 'All-in mit mehr als 20 BB (kein Chart-Spot)',
   otherSpot: 'Spot vom Modell nicht abgedeckt',
   postflopPending: 'Postflop-Bewertung folgt',
@@ -161,6 +161,9 @@ export function ratePreflopDecision(
     const effectiveBb = Math.min(heroStack, stackOf(threeBet.player)) / bb;
     const model = modelFor(effectiveBb);
     if (model.model === 'pushfold') return unrated('shortNotPushFold');
+    // A 3-bet shove, or a call that would put the hero all-in, is no chart spot.
+    const threeBetTo = threeBet.to ?? threeBet.amount;
+    if (isShove(threeBet, threeBetTo) || threeBetTo >= SHOVE_SHARE * heroStack) return unrated('deepAllIn');
     return chart('vs3bet', pos(threeBet.player), effectiveBb, model.depth, model.approximation);
   }
   return unrated('multiRaise');

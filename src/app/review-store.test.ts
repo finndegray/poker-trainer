@@ -156,6 +156,90 @@ describe('review store', () => {
     expect(store.getSnapshot().tournaments[0].handIds).toHaveLength(6);
   });
 
+  describe('hands that cannot be read keep their id', () => {
+    const six = dailyClassic.split(/\n(?=Poker Hand #)/);
+    async function withCorruptHand() {
+      const ctx = await setup();
+      await ctx.store.importText(dailyClassic);
+      const [tournament] = ctx.store.getSnapshot().tournaments;
+      const corruptId = tournament.handIds[1];
+      await ctx.backend.setMany([[handKey(corruptId), 'kaputt']]);
+      return { ...ctx, tournament, corruptId };
+    }
+    const stored = (backend: { dump(): Record<string, string> }, id: string) => readTournament(backend.dump()[tournamentKey(id)]);
+
+    it('when a re-rated tournament is opened in the writing tab', async () => {
+      const { store, backend, tournament, corruptId } = await withCorruptHand();
+      const key = handKey(tournament.handIds[0]);
+      const old = { ...readHand(backend.dump()[key]), analysisVersion: 0, analysis: { version: 0, decisions: [] } };
+      await backend.setMany([[key, JSON.stringify(old)]]);
+      const open = await store.openTournament(tournament.id);
+      expect(readHand(backend.dump()[key]).analysisVersion).toBe(ANALYSIS_VERSION);
+      expect(stored(backend, tournament.id).handIds).toEqual(tournament.handIds);
+      expect(store.getSnapshot().tournaments[0].handIds).toContain(corruptId);
+      expect(open.problems.map((p) => p.key)).toContain(`hand:${corruptId}`);
+    });
+
+    it('when the kind is changed', async () => {
+      const { store, backend, tournament } = await withCorruptHand();
+      await store.setKind(tournament.id, 'bounty');
+      expect(stored(backend, tournament.id)).toMatchObject({ kind: 'bounty', handIds: tournament.handIds });
+    });
+
+    it('when more hands are imported or merged into the tournament', async () => {
+      const { store, backend } = await setup();
+      await store.importText(six.slice(0, 3).join('\n\n'));
+      const [tournament] = store.getSnapshot().tournaments;
+      const corruptId = tournament.handIds[1];
+      await backend.setMany([[handKey(corruptId), 'kaputt']]);
+      await store.importText(six.slice(3).join('\n\n'));
+      const ids = stored(backend, tournament.id).handIds;
+      expect(ids).toHaveLength(6);
+      expect(ids).toContain(corruptId);
+      expect(new Set(ids).size).toBe(6);
+      expect(ids.filter((id) => tournament.handIds.includes(id))).toEqual(tournament.handIds);
+    });
+  });
+
+  describe('lost writer lock while hands are being rated', () => {
+    async function slowStore() {
+      let writer = true;
+      let armed = false;
+      const inline = createInlineAnalyzer(getPushFoldData(), async () => {});
+      const analyzer: HandAnalyzer = {
+        analyze: async (hands, onProgress) => {
+          const out = await inline.analyze(hands, onProgress);
+          if (armed) writer = false;
+          return out;
+        },
+      };
+      const { store, backend } = await setup({ canWrite: () => writer, analyzer });
+      await store.importText(bounty);
+      const key = handKey('TM6532114653');
+      const hand = { ...readHand(backend.dump()[key]), analysisVersion: 1, analysis: { version: 1, decisions: [] } };
+      const tournament = { ...readTournament(backend.dump()[tournamentKey('318083464')]), analysisVersion: 1 };
+      await backend.setMany([[key, JSON.stringify(hand)], [tournamentKey('318083464'), JSON.stringify(tournament)]]);
+      await store.load();
+      armed = true;
+      return { store, backend };
+    }
+
+    it('openTournament keeps the result in memory only', async () => {
+      const { store, backend } = await slowStore();
+      const before = backend.dump();
+      const open = await store.openTournament('318083464');
+      expect(open.hands[0].record.analysisVersion).toBe(ANALYSIS_VERSION);
+      expect(backend.dump()).toEqual(before);
+    });
+
+    it('refreshStale writes nothing', async () => {
+      const { store, backend } = await slowStore();
+      const before = backend.dump();
+      await store.refreshStale();
+      expect(backend.dump()).toEqual(before);
+    });
+  });
+
   it('rates in memory only in a reading tab and never writes there', async () => {
     const backend = memoryReviewBackend();
     const writer = createReviewStore({ backend, data: getPushFoldData(), canWrite: () => true, readOnly: false, pause: async () => {} });

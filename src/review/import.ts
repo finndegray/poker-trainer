@@ -177,7 +177,27 @@ export function handRecordOf({ hand, analysis }: AnalyzedHand): HandRecord {
   };
 }
 
-/** Builds the tournament record from all its hands (old and new), keeping a kind the player chose. */
+/**
+ * The loaded ids in order, plus every id of the previous record that was not loaded (unreadable or missing hand
+ * records): those stay in the list at their old place, so a rewrite never drops them from the tournament.
+ */
+function mergeHandIds(loaded: readonly string[], previous: readonly string[]): string[] {
+  const out = [...loaded];
+  const known = new Set(loaded);
+  let anchor = -1;
+  for (const id of previous) {
+    if (known.has(id)) {
+      anchor = out.indexOf(id);
+      continue;
+    }
+    out.splice(anchor + 1, 0, id);
+    known.add(id);
+    anchor++;
+  }
+  return out;
+}
+
+/** Builds the tournament record from all its hands (old and new), keeping a kind the player chose and every previous hand id. */
 export function tournamentRecordOf(
   id: string,
   name: string,
@@ -188,6 +208,7 @@ export function tournamentRecordOf(
   const sorted = [...hands].sort((a, b) => a.playedAt.localeCompare(b.playedAt) || a.id.localeCompare(b.id));
   const detectedKind = previous?.detectedKind ?? detectTournamentKind(name);
   const kind = kindOverride ?? previous?.kind ?? detectedKind;
+  const handIds = mergeHandIds(sorted.map((h) => h.id), previous?.handIds ?? []);
   const analysisVersion = sorted.length === 0 ? ANALYSIS_VERSION : Math.min(...sorted.map((h) => h.analysisVersion));
   return {
     reviewSchemaVersion: REVIEW_SCHEMA_VERSION,
@@ -197,7 +218,7 @@ export function tournamentRecordOf(
     kind,
     firstPlayedAt: sorted[0]?.playedAt ?? '',
     lastPlayedAt: sorted[sorted.length - 1]?.playedAt ?? '',
-    handIds: sorted.map((h) => h.id),
+    handIds,
     analysisVersion,
     summary: summarize(sorted, kind),
   };

@@ -204,6 +204,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
               previous,
               previous ? null : (kinds.get(id) ?? null),
             );
+            assertWritable();
             await writeRecords(backend, [next], [...old.changed, ...added]);
             return next;
           });
@@ -276,6 +277,8 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
           // Hands rated by an older version are rated again; the result is kept when this tab may write.
           if (loaded.changed.length > 0) {
             current = tournamentRecordOf(id, tournament.name, loaded.hands.map((h) => h.record), tournament);
+            // The lock may have gone while the hands were rated: re-check right before the write.
+            update({});
             if (snapshot.writable) {
               await writeRecords(backend, [current], loaded.changed);
               update({ tournaments: replaceTournament(current) });
@@ -308,6 +311,8 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
               // A tournament with unreadable hands keeps its record; opening it shows the problem.
               if (loaded.problems.length > 0) return false;
               const record = tournamentRecordOf(id, tournament.name, loaded.hands.map((h) => h.record), tournament);
+              update({});
+              if (!snapshot.writable) return true;
               try {
                 await writeRecords(backend, [record], loaded.changed);
               } catch (error) {
@@ -336,6 +341,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
         if (!tournament) throw new Error('Turnier nicht gefunden');
         const loaded = await loadTournamentHands(tournament);
         const record = tournamentRecordOf(id, tournament.name, loaded.hands.map((h) => h.record), tournament, kind);
+        assertWritable();
         await writeRecords(backend, [record], loaded.changed);
         update({ tournaments: replaceTournament(record) });
       });

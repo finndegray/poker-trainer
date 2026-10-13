@@ -143,7 +143,7 @@ describe('not rated, with a reason', () => {
   });
   it('every reason has a German text', () => {
     expect(UNRATED_TEXT.postflopPending).toBe('Postflop-Bewertung folgt');
-    expect(UNRATED_TEXT.shortNotPushFold).toBe('Spot mit höchstens 20 BB ohne All-in (kein Push/Fold-Spot)');
+    expect(UNRATED_TEXT.shortNotPushFold).toBe('Spot mit höchstens 20 BB (kein Push/Fold-Spot)');
     expect(Object.values(UNRATED_TEXT).every((t) => t.length > 0)).toBe(true);
   });
 });

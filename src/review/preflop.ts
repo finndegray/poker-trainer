@@ -37,7 +37,7 @@ export const UNRATED_TEXT: Record<UnratedReason, string> = {
   squeeze: 'Squeeze',
   multiRaise: 'Mehrere Raises vor dir',
   deepPot: '4-Bet-Pot und tiefer',
-  shortNotPushFold: 'Spot mit höchstens 20 BB ohne All-in (kein Push/Fold-Spot)',
+  shortNotPushFold: 'Spot mit höchstens 20 BB (kein Push/Fold-Spot)',
   deepAllIn: 'All-in mit mehr als 20 BB (kein Chart-Spot)',
   otherSpot: 'Spot vom Modell nicht abgedeckt',
   postflopPending: 'Postflop-Bewertung folgt',

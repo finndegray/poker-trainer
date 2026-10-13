@@ -26,7 +26,12 @@ export type UnratedReason =
   | 'shortNotPushFold'
   | 'deepAllIn'
   | 'otherSpot'
-  | 'postflopPending';
+  | 'postflopPending'
+  | 'multiwayPostflop'
+  | 'unknownRange'
+  | 'limpRange'
+  | 'deepRange'
+  | 'shortRange';
 
 export const UNRATED_TEXT: Record<UnratedReason, string> = {
   tableSize: 'Tischgröße',
@@ -41,6 +46,11 @@ export const UNRATED_TEXT: Record<UnratedReason, string> = {
   deepAllIn: 'All-in mit mehr als 20 BB (kein Chart-Spot)',
   otherSpot: 'Spot vom Modell nicht abgedeckt',
   postflopPending: 'Postflop-Bewertung folgt',
+  multiwayPostflop: 'Multiway',
+  unknownRange: 'Range des Gegners unbekannt',
+  limpRange: 'Range des Gegners unbekannt: Limp-Pot',
+  deepRange: 'Range des Gegners unbekannt: 4-Bet-Pot',
+  shortRange: 'Range des Gegners unbekannt: höchstens 20 BB (kein Chart)',
 };
 
 export type PushFoldRating = { model: 'pushfold'; spot: Spot; chosen: Action; grade: Grade; effectiveBb: number };

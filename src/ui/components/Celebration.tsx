@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { RankName } from '../../game/xp';
 import './Celebration.css';
 
@@ -6,7 +6,8 @@ const PIECES = Array.from({ length: 24 }, (_, i) => i);
 
 export function Celebration({ rank, onClose }: { rank: RankName; onClose: () => void }) {
   const button = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
+  // Layout effect: runs before the browser can move focus out of the `inert` app root.
+  useLayoutEffect(() => {
     const previous = document.activeElement;
     button.current?.focus();
     return () => {

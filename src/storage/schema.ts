@@ -111,7 +111,7 @@ const isInt = (v: unknown): v is number => isIntIn(v, 0, Number.MAX_SAFE_INTEGER
 
 function isDailyProgress(v: unknown): boolean {
   return isObject(v) && isString(v.dateKey) && DATE_KEY.test(v.dateKey) && isIntIn(v.index, 0, DAILY_SPOT_COUNT - 1)
-    && isInt(v.correct) && isInt(v.elapsedMs);
+    && isInt(v.correct) && (v.correct as number) <= (v.index as number) && isInt(v.elapsedMs);
 }
 
 function fail(reason: string, code: SaveFormatErrorCode = 'corrupt'): never {

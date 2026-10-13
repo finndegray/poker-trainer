@@ -161,4 +161,11 @@ describe('daily progress', () => {
     ];
     for (const dailyProgress of bad) expect(() => migrate({ ...emptyState(), dailyProgress })).toThrow(SaveFormatError);
   });
+
+  it('rejects more correct answers than answered spots', () => {
+    expect(() => migrate({ ...emptyState(), dailyProgress: { ...progress, index: 3, correct: 50 } })).toThrow(SaveFormatError);
+    expect(() => migrate({ ...emptyState(), dailyProgress: { ...progress, index: 3, correct: 4 } })).toThrow(SaveFormatError);
+    const allCorrect = { ...progress, index: 3, correct: 3 };
+    expect(migrate({ ...emptyState(), dailyProgress: allCorrect }).dailyProgress).toEqual(allCorrect);
+  });
 });

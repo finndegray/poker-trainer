@@ -21,7 +21,7 @@ import type { DecisionMode } from '../game/stats';
 import { localDateKey } from '../game/streak';
 import type { RankName } from '../game/xp';
 import { type RunSummary, type SaveState, deserialize, serialize } from '../storage/schema';
-import type { Persistence, PersistenceInfo } from './persistence';
+import type { BackupApi, Persistence, PersistenceInfo } from './persistence';
 
 export type TrainingSpot = { spot: Spot; cards: readonly [Card, Card]; shownAt: number };
 export type AnswerResult = { outcome: DecisionOutcome; comparison: PositionComparison; chart: ChartCell[] };
@@ -81,6 +81,7 @@ export type GameStore = {
   exportState(): string;
   /** Validates, backs up the current state, then replaces it. */
   importState(text: string): Promise<void>;
+  getBackups(): BackupApi;
 };
 
 export function createGameStore(deps: GameStoreDeps): GameStore {
@@ -288,6 +289,9 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
       const imported = deserialize(text);
       await persistence.backups.create(serialize(snapshot.save));
       commit(imported, { session: { kind: 'training' }, current: null, last: null, celebration: null });
+    },
+    getBackups() {
+      return persistence.backups;
     },
   };
   return store;

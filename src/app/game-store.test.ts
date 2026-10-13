@@ -371,3 +371,11 @@ describe('celebration, export and import', () => {
     expect(() => store.startRun()).toThrow();
   });
 });
+
+describe('getBackups', () => {
+  it('exposes the persistence backups', async () => {
+    const { store, create } = setup();
+    await store.getBackups().create('{}');
+    expect(create).toHaveBeenCalledWith('{}');
+  });
+});

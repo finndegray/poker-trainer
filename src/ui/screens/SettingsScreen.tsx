@@ -1,0 +1,154 @@
+import { type ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { localDateKey } from '../../game/streak';
+import { BACKUP_PREFIX } from '../../storage/store';
+import { downloadText } from '../download';
+import { useGame, useGameStore } from '../GameContext';
+import './screens.css';
+import './settings.css';
+
+function backupLabel(key: string): string {
+  const date = new Date(key.slice(BACKUP_PREFIX.length));
+  if (Number.isNaN(date.getTime())) return key;
+  return `Sicherung vom ${date.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}`;
+}
+
+/** File.text() with a FileReader fallback for environments that lack it. */
+function readText(file: File): Promise<string> {
+  if (typeof file.text === 'function') return file.text();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('Datei nicht lesbar'));
+    reader.readAsText(file);
+  });
+}
+
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+export function SettingsScreen({ onBack }: { onBack: () => void }) {
+  const store = useGameStore();
+  const game = useGame();
+  const [keys, setKeys] = useState<string[]>([]);
+  const [message, setMessage] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const canWrite = !game.info.readOnly && !game.info.otherTabActive;
+
+  const refresh = useCallback(async () => {
+    const list = await store.getBackups().list();
+    setKeys([...list].reverse());
+  }, [store]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const exportNow = () =>
+    downloadText(`poker-trainer-spielstand-${localDateKey(new Date())}.json`, store.exportState());
+
+  const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const chosen = event.target.files?.[0];
+    event.target.value = '';
+    if (!chosen) return;
+    if (!window.confirm('Aktuellen Spielstand ersetzen? Er wird vorher als Sicherung abgelegt.')) return;
+    try {
+      await store.importState(await readText(chosen));
+      setMessage('Spielstand importiert.');
+      await refresh();
+    } catch (error) {
+      setMessage(`Import fehlgeschlagen: ${errorText(error)}`);
+    }
+  };
+
+  const download = async (key: string) => {
+    const raw = await store.getBackups().read(key);
+    if (raw !== undefined) {
+      downloadText(`poker-trainer-sicherung-${key.slice(BACKUP_PREFIX.length, BACKUP_PREFIX.length + 10)}.json`, raw);
+    }
+  };
+
+  const remove = async (key: string) => {
+    if (!window.confirm('Diese Sicherung endgültig löschen?')) return;
+    try {
+      await store.getBackups().remove(key);
+      await refresh();
+    } catch (error) {
+      setMessage(`Löschen fehlgeschlagen: ${errorText(error)}`);
+    }
+  };
+
+  return (
+    <>
+      <div className="screen-header">
+        <button type="button" className="btn btn--ghost" onClick={onBack}>
+          ← Menü
+        </button>
+        <span className="muted">Einstellungen</span>
+      </div>
+
+      <section className="panel settings-section">
+        <h3 className="settings-section__title">Sound</h3>
+        <label className="settings-switch">
+          <input
+            type="checkbox"
+            checked={game.save.profile.soundOn}
+            disabled={game.info.readOnly}
+            onChange={(event) => store.setSound(event.target.checked)}
+          />
+          Sounds abspielen
+        </label>
+      </section>
+
+      <section className="panel settings-section">
+        <h3 className="settings-section__title">Spielstand</h3>
+        <p className="muted">
+          Exportiere deinen Spielstand als Datei, um ihn zu sichern oder auf ein anderes Gerät zu übertragen.
+        </p>
+        <div className="settings-buttons">
+          <button type="button" className="btn" onClick={exportNow}>
+            Exportieren
+          </button>
+          <button type="button" className="btn" disabled={!canWrite} onClick={() => fileInput.current?.click()}>
+            Importieren
+          </button>
+        </div>
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".json,application/json"
+          aria-label="Spielstand-Datei"
+          className="settings-file"
+          onChange={(event) => void onFile(event)}
+        />
+        {!canWrite && <p className="muted">Import ist nur in dem Tab möglich, der deinen Fortschritt speichert.</p>}
+        {message && <p role="status">{message}</p>}
+      </section>
+
+      <section className="panel settings-section">
+        <h3 className="settings-section__title">Sicherungen</h3>
+        {keys.length === 0 ? (
+          <p className="muted">Keine Sicherungen vorhanden.</p>
+        ) : (
+          <ul className="settings-backups">
+            {keys.map((key) => (
+              <li key={key}>
+                <span>{backupLabel(key)}</span>
+                <span className="settings-backups__actions">
+                  <button type="button" className="btn btn--ghost" onClick={() => void download(key)}>
+                    Herunterladen
+                  </button>
+                  <button type="button" className="btn btn--ghost" disabled={!canWrite} onClick={() => void remove(key)}>
+                    Löschen
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="panel settings-section">
+        <h3 className="settings-section__title">Über</h3>
+        <p className="muted">Push/Fold-Ranges aus einem Nash-Gleichgewicht in chip-EV · 8-max · Big-Blind-Ante · 1–20 BB.</p>
+      </section>
+    </>
+  );
+}

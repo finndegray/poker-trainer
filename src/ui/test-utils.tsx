@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { vi } from 'vitest';
 import { createGameStore } from '../app/game-store';
 import type { BackupApi, PersistenceInfo } from '../app/persistence';
-import { createReviewStore } from '../app/review-store';
+import { createReviewStore, retrainingSinkOf } from '../app/review-store';
 import { mulberry32 } from '../engine/rng';
 import { makeFixture } from '../engine/test-fixtures';
 import { type ReviewBackend, memoryReviewBackend } from '../review/archive';
@@ -53,6 +53,7 @@ export function renderWithStore(
     canWrite: () => !info.readOnly && !info.otherTabActive,
     readOnly: info.readOnly,
     pause: async () => {},
+    retraining: retrainingSinkOf(store),
   });
   const loaded = review.load();
   const result = render(

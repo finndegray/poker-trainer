@@ -33,7 +33,8 @@ function summarize(spot: Spot, entries: readonly PositionEntry[]): string {
   }
   const label = (p: Position) => POSITION_LABELS[p];
   const parts =
-    segments.length === 1
+    // "aus jeder Position" only makes sense when more than one position was compared.
+    segments.length === 1 && entries.length > 1
       ? [`${word[segments[0].group]} aus jeder Position`]
       : segments.map((seg, i) => {
           if (seg.from === seg.to) return `${word[seg.group]} aus ${label(seg.from)}`;

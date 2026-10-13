@@ -43,6 +43,20 @@ describe('comparePositions', () => {
     expect(r.summary).toBe('A7o bei 10 BB: Fold aus UTG bis LJ, knapp aus HJ, Push ab CO');
   });
 
+  it('names the single caller instead of "aus jeder Position"', () => {
+    const call = comparePositions(data, { kind: 'call', shover: 'SB', position: 'BB', stack: 8, hand: a7o });
+    expect(call.entries.map((e) => e.position)).toEqual(['BB']);
+    expect(call.summary).toBe('A7o bei 8 BB gegen Shove aus SB: Call aus BB');
+    const fold = comparePositions(makeFixture(() => -2), { kind: 'call', shover: 'SB', position: 'BB', stack: 8, hand: a7o });
+    expect(fold.summary).toBe('A7o bei 8 BB gegen Shove aus SB: Fold aus BB');
+  });
+
+  it('uses "knapp ab" for a close last segment spanning several positions', () => {
+    const tail = makeFixture((_, s) => (seatOf(s.position) < 3 ? -2 : 0.05));
+    const r = comparePositions(tail, { kind: 'open', position: 'HJ', stack: 10, hand: a7o });
+    expect(r.summary).toBe('A7o bei 10 BB: Fold aus UTG bis LJ, knapp ab HJ');
+  });
+
   it('uses "aus jeder Position" when all positions agree', () => {
     const all = makeFixture(() => 2);
     const r = comparePositions(all, { kind: 'open', position: 'UTG', stack: 5, hand: parseHand('AA') });

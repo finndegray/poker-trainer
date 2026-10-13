@@ -10,7 +10,9 @@ import {
   formatPercent,
   preflopChoiceLabel,
   preflopSituationText,
+  preflopSpotTitle,
   verdictLabel,
+  xpSummary,
 } from './format';
 
 describe('format', () => {
@@ -77,5 +79,17 @@ describe('starthand formatting', () => {
     expect(preflopSituationText(spot({ kind: 'vsOpen', stack: 40, hero: 'LJ', villain: 'UTG1' }))).toBe('UTG+1 erhöht auf 2,2 BB');
     expect(preflopSituationText(spot({ kind: 'vs3bet', stack: 100, hero: 'CO', villain: 'BTN' }))).toBe('BTN 3-bettet auf 6,6 BB');
     expect(preflopSituationText(spot({ kind: 'vs3bet', stack: 100, hero: 'UTG', villain: 'BB' }))).toBe('BB 3-bettet auf 8,8 BB');
+  });
+
+  it('names the spot for the feedback heading', () => {
+    expect(preflopSpotTitle(spot({ kind: 'rfi', stack: 100, hero: 'CO', villain: null }))).toBe('Open-Raise aus CO');
+    expect(preflopSpotTitle(spot({ kind: 'vsOpen', stack: 100, hero: 'BTN', villain: 'UTG1' }))).toBe('BTN gegen Open-Raise aus UTG+1');
+    expect(preflopSpotTitle(spot({ kind: 'vs3bet', stack: 40, hero: 'CO', villain: 'BB' }))).toBe('CO gegen 3-Bet aus BB');
+  });
+
+  it('sums up the XP of a decision', () => {
+    expect(xpSummary({ xp: 23, combo: 5, multiplier: 1.5 })).toBe('+23 XP · Combo ×1,5 · 5 in Folge');
+    expect(xpSummary({ xp: 15, combo: 1, multiplier: 1 })).toBe('+15 XP');
+    expect(xpSummary({ xp: 0, combo: 0, multiplier: 1 })).toBe('0 XP');
   });
 });

@@ -38,6 +38,8 @@ export type Persistence = {
   info: PersistenceInfo;
   save(state: SaveState): void;
   flush(): Promise<void>;
+  /** True while this tab may write: not read-only and holding the writer lock (also used by the hand archive). */
+  canWrite(): boolean;
   /** Called once this tab becomes the writer after another tab released the lock. */
   onWriterAcquired(listener: (fresh: SaveState) => void): () => void;
   /** Manual and automatic backups of the save, e.g. before an import. */
@@ -137,6 +139,7 @@ export async function openPersistence(env: PersistenceEnv): Promise<Persistence>
       if (writable) queue.schedule(state);
     },
     flush: () => queue.flush(),
+    canWrite: () => writable,
     backups: {
       list: () => listBackups(backend),
       read: (key) => readBackup(backend, key),

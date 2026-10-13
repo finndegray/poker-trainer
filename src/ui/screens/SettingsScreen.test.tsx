@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import bounty from '../../review/fixtures/bounty.txt?raw';
+import { EXPORT_KEY, withArchive } from '../../review/export';
 import { emptyState, serialize } from '../../storage/schema';
 import { downloadText } from '../download';
 import { renderWithStore } from '../test-utils';
@@ -110,5 +112,40 @@ describe('SettingsScreen', () => {
     expect(await screen.findByText('Keine Sicherungen vorhanden.')).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Importieren' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('Import ist nur in dem Tab möglich, der deinen Fortschritt speichert.')).toBeTruthy();
+  });
+});
+
+describe('SettingsScreen with the hand archive', () => {
+  it('adds the archive to the export once hands are archived', async () => {
+    const { review, loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(async () => {
+      await loaded;
+      await review.importText(bounty);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Exportieren' }));
+    await waitFor(() => expect(downloadText).toHaveBeenCalledTimes(1));
+    const text = vi.mocked(downloadText).mock.calls[0][1];
+    expect(JSON.parse(text)[EXPORT_KEY].hands).toHaveLength(1);
+    expect(text.startsWith(serialize(emptyState()).slice(0, -1))).toBe(true);
+  });
+
+  it('merges the archive part of an imported file', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { review, loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(() => loaded);
+    const part = { reviewSchemaVersion: 1 as const, tournaments: [{ id: '318083464', name: 'Bounty Hunters $2.50', kind: 'normal' as const }], hands: [{ id: 'TM6532114653', tournamentId: '318083464', raw: bounty }] };
+    fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(withArchive(serialize(emptyState()), part))] } });
+    expect(await screen.findByText('Spielstand importiert. Hand-Archiv: 1 Hände ergänzt, 0 schon vorhanden.')).toBeTruthy();
+    expect(review.getSnapshot().tournaments[0]).toMatchObject({ id: '318083464', kind: 'normal' });
+  });
+
+  it('imports nothing when the archive part is broken', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { store, create } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    const broken = serialize({ ...emptyState(), profile: { xp: 5, combo: 0, soundOn: true } }).slice(0, -1) + ',"reviewArchive":{"reviewSchemaVersion":1}}';
+    fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(broken)] } });
+    expect(await screen.findByText('Import fehlgeschlagen: Hand-Archiv in der Datei ist nicht lesbar')).toBeTruthy();
+    expect(store.getSnapshot().save.profile.xp).toBe(0);
+    expect(create).not.toHaveBeenCalled();
   });
 });

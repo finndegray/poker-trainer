@@ -1,8 +1,11 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { formatCount } from '../../app/format';
 import { localDateKey } from '../../game/streak';
+import { type ArchiveExport, readArchivePart, withArchive } from '../../review/export';
 import { BACKUP_PREFIX } from '../../storage/store';
 import { downloadText } from '../download';
 import { useGame, useGameStore } from '../GameContext';
+import { useReview, useReviewStore } from '../ReviewContext';
 import './screens.css';
 import './settings.css';
 
@@ -28,6 +31,8 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
 export function SettingsScreen({ onBack }: { onBack: () => void }) {
   const store = useGameStore();
   const game = useGame();
+  const reviewStore = useReviewStore();
+  const review = useReview();
   const [keys, setKeys] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -41,26 +46,50 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
     refresh().catch(() => setMessage('Sicherungen konnten nicht geladen werden.'));
   }, [refresh]);
 
-  const exportNow = () =>
-    downloadText(`poker-trainer-spielstand-${localDateKey(new Date())}.json`, store.exportState());
+  // Without archived hands the export is exactly the save, as before (and written right away).
+  const exportNow = async () => {
+    const name = `poker-trainer-spielstand-${localDateKey(new Date())}.json`;
+    if (review.tournaments.length === 0) {
+      downloadText(name, store.exportState());
+      return;
+    }
+    try {
+      downloadText(name, withArchive(store.exportState(), await reviewStore.exportPart()));
+    } catch (error) {
+      setMessage(`Export fehlgeschlagen: ${errorText(error)}`);
+    }
+  };
 
   const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const chosen = event.target.files?.[0];
     event.target.value = '';
     if (!chosen) return;
     if (!window.confirm('Aktuellen Spielstand ersetzen? Er wird vorher als Sicherung abgelegt.')) return;
+    let part: ArchiveExport | null;
     try {
-      await store.importState(await readText(chosen));
+      const text = await readText(chosen);
+      // A broken archive part stops the whole import before anything is replaced.
+      part = readArchivePart(text);
+      await store.importState(text);
     } catch (error) {
       setMessage(`Import fehlgeschlagen: ${errorText(error)}`);
       return;
     }
-    setMessage('Spielstand importiert.');
+    let done = 'Spielstand importiert.';
+    if (part) {
+      try {
+        const merged = await reviewStore.mergeExport(part);
+        done = `Spielstand importiert. Hand-Archiv: ${formatCount(merged.imported)} Hände ergänzt, ${formatCount(merged.duplicates)} schon vorhanden.${merged.failures?.length ? ` ${merged.failures.join(' ')}` : ''}`;
+      } catch (error) {
+        done = `Spielstand importiert. Hand-Archiv nicht übernommen: ${errorText(error)}`;
+      }
+    }
+    setMessage(done);
     // The import itself succeeded; a failing list must not be reported as a failed import.
     try {
       await refresh();
     } catch {
-      setMessage('Spielstand importiert. Die Liste der Sicherungen konnte nicht geladen werden.');
+      setMessage(`${done} Die Liste der Sicherungen konnte nicht geladen werden.`);
     }
   };
 
@@ -111,10 +140,10 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
       <section className="panel settings-section">
         <h3 className="settings-section__title">Spielstand</h3>
         <p className="muted">
-          Exportiere deinen Spielstand als Datei, um ihn zu sichern oder auf ein anderes Gerät zu übertragen.
+          Exportiere deinen Spielstand und dein Hand-Archiv als Datei, um sie zu sichern oder auf ein anderes Gerät zu übertragen.
         </p>
         <div className="settings-buttons">
-          <button type="button" className="btn" onClick={exportNow}>
+          <button type="button" className="btn" onClick={() => void exportNow()}>
             Exportieren
           </button>
           <button type="button" className="btn" disabled={!canWrite} onClick={() => fileInput.current?.click()}>

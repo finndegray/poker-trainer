@@ -18,7 +18,15 @@ export type ImportFile = { name: string; bytes: Uint8Array };
 export type ImportText = { name: string; text: string };
 export type ImportProgress = { tournament: number; tournaments: number; hand: number; hands: number };
 export type SkipCount = { reason: string; count: number };
-export type ImportSummary = { imported: number; duplicates: number; skipped: SkipCount[]; tournaments: number };
+export type ImportSummary = {
+  imported: number;
+  duplicates: number;
+  skipped: SkipCount[];
+  /** Tournaments that received hands. */
+  tournaments: number;
+  /** Tournaments the archive refused to write (newer version, unreadable record), as German messages; omitted when none. */
+  failures?: string[];
+};
 
 export class ImportLimitError extends Error {
   constructor(message: string) {

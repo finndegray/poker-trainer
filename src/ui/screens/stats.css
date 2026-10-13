@@ -64,6 +64,28 @@
   gap: 8px;
 }
 
+.stats-toggle--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stats-toggle--three .btn {
+  font-size: 14px;
+  line-height: 1.2;
+  padding: 4px 6px;
+}
+
+.stats-block {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.stats-heading {
+  margin: 4px 0 0;
+  font-size: 18px;
+  color: var(--gold);
+}
+
 .stats-list {
   margin: 0;
   padding-left: 18px;

@@ -3,8 +3,8 @@ import { parseHand } from '../engine/cards';
 import type { PreflopSpot } from '../engine/preflop/spots';
 import type { Spot, Verdict } from '../engine/pushfold';
 import {
-  accuracy, accuracyBy, adaptiveWeights, byKind, byPosition, byStackBucket, handErrorMatrix, isPreflopRecord,
-  preflopAdaptiveWeights, preflopRecords, pushFoldRecords, weeklyTrend, type PreflopRecord, type PushFoldRecord,
+  accuracy, accuracyBy, adaptiveWeights, byKind, byPosition, byPreflopHero, byPreflopKind, byPreflopStack, byStackBucket, handErrorMatrix, isPreflopRecord,
+  preflopAdaptiveWeights, preflopHandErrorMatrix, preflopRecords, pushFoldRecords, weeklyTrend, type PreflopRecord, type PushFoldRecord,
 } from './stats';
 
 let ts = 0;
@@ -111,5 +111,31 @@ describe('preflopAdaptiveWeights', () => {
   it('weights starthand categories by their own errors and ignores push/fold', () => {
     const w = preflopAdaptiveWeights([preRec(rfiCo(), 'wrong'), preRec(rfiCo(), 'correct'), rec(btn(10), 'wrong')]);
     expect([...w.entries()]).toEqual([['rfi|CO|100', 3]]);
+  });
+});
+
+describe('starthand statistics', () => {
+  const records = () => [
+    preRec(rfiCo('A9o'), 'wrong'),
+    preRec(rfiCo('A9o'), 'correct'),
+    preRec({ kind: 'vsOpen', stack: 40, hero: 'BB', villain: 'UTG', hand: parseHand('KJo') }, 'close'),
+    preRec({ kind: 'vs3bet', stack: 100, hero: 'CO', villain: 'BTN', hand: parseHand('AQo') }, 'wrong'),
+  ];
+
+  it('groups by spot type, hero position and stack', () => {
+    expect(accuracyBy(records(), byPreflopKind).get('rfi')).toEqual({ correct: 1, total: 2, rate: 0.5 });
+    expect(accuracyBy(records(), byPreflopKind).get('vsOpen')).toEqual({ correct: 1, total: 1, rate: 1 });
+    expect(accuracyBy(records(), byPreflopHero).get('CO')?.total).toBe(3);
+    expect(accuracyBy(records(), byPreflopStack).get('40 BB')).toEqual({ correct: 1, total: 1, rate: 1 });
+    expect(accuracyBy(records(), byPreflopStack).get('100 BB')?.total).toBe(3);
+  });
+
+  it('counts errors per hand for one starthand spot type and skips push/fold records', () => {
+    const m = preflopHandErrorMatrix([...records(), rec(btn(10, 'A9o'), 'wrong')], 'rfi');
+    expect(m.total).toHaveLength(169);
+    expect(m.total[parseHand('A9o')]).toBe(2);
+    expect(m.errors[parseHand('A9o')]).toBe(1);
+    expect(m.total[parseHand('AQo')]).toBe(0);
+    expect(preflopHandErrorMatrix(records(), 'vs3bet').errors[parseHand('AQo')]).toBe(1);
   });
 });

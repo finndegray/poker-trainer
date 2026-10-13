@@ -1,5 +1,5 @@
 import { HAND_COUNT } from '../engine/cards';
-import { type PreflopAction, type PreflopSpot, preflopCategoryKey } from '../engine/preflop/spots';
+import { type PreflopAction, type PreflopKind, type PreflopSpot, preflopCategoryKey } from '../engine/preflop/spots';
 import type { Position } from '../engine/positions';
 import type { Action, Spot, Verdict } from '../engine/pushfold';
 import { type CategoryKey, type SpotKind, type StackBucket, categoryKey, stackBucketOf } from '../engine/spot-generator';
@@ -100,3 +100,12 @@ export const adaptiveWeights = (records: readonly DecisionRecord[]): Map<Categor
 /** Starthand categories (kind|hero|stack) weighted by starthand mistakes only. */
 export const preflopAdaptiveWeights = (records: readonly DecisionRecord[]): Map<string, number> =>
   weightsBy(preflopRecords(records), (r) => preflopCategoryKey(r.spot));
+
+export const byPreflopKind = (r: PreflopRecord): PreflopKind => r.spot.kind;
+export const byPreflopHero = (r: PreflopRecord): Position => r.spot.hero;
+export const byPreflopStack = (r: PreflopRecord): string => `${r.spot.stack} BB`;
+
+/** Starthand only, for one spot type. */
+export function preflopHandErrorMatrix(records: readonly DecisionRecord[], kind: PreflopKind): { total: number[]; errors: number[] } {
+  return errorMatrix(preflopRecords(records).filter((r) => r.spot.kind === kind));
+}

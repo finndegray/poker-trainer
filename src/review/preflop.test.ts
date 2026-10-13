@@ -96,6 +96,23 @@ describe('chart spots (more than 20 BB)', () => {
     expect(foldToShove[1]).toEqual({ model: 'unrated', reason: 'deepAllIn' });
   });
 
+  it('treats a 3-bet of 80 % of a stack as all-in, and one just below as a chart spot', () => {
+    const open = [...foldsBetween('UTG', 'CO'), 'Hero: raises 120 to 220'];
+    const rateAnswer = (to: string, call: string) =>
+      rate({ hero: 'CO', heroCards: 'Ah Ad', stacksBb: { CO: 40, BTN: 40 }, lines: [...open, `BTN: raises ${to}`, 'SB: folds', 'BB: folds', `Hero: calls ${call}`] })[1];
+    // 3,200 of the 3-bettor's 4,000 chips, no all-in flag.
+    expect(rateAnswer('2,980 to 3,200', '2,980')).toEqual({ model: 'unrated', reason: 'deepAllIn' });
+    // 3,180 of 4,000 chips is 79.5 % for both stacks.
+    expect(rateAnswer('2,960 to 3,180', '2,960')).toMatchObject({ model: 'chart', spot: { kind: 'vs3bet', stack: 40 } });
+  });
+
+  it('treats a 3-bet of 80 % of the hero stack as all-in even when the 3-bettor is deep', () => {
+    const open = [...foldsBetween('UTG', 'CO'), 'Hero: raises 120 to 220'];
+    // 3,200 is 32 % of the 3-bettor's 10,000 chips but 80 % of the hero's 4,000.
+    const r = rate({ hero: 'CO', heroCards: 'Ah Ad', stacksBb: { CO: 40, BTN: 100 }, lines: [...open, 'BTN: raises 2,980 to 3,200', 'SB: folds', 'BB: folds', 'Hero: calls 2,980'] });
+    expect(r[1]).toEqual({ model: 'unrated', reason: 'deepAllIn' });
+  });
+
   it('marks charts as an approximation when the stack is more than 25 % away', () => {
     const r = first({ hero: 'BTN', stacksBb: { BTN: 28 }, lines: [...foldsBetween('UTG', 'BTN'), 'Hero: folds', 'SB: folds'] });
     expect(r).toMatchObject({ model: 'chart', spot: { stack: 40 }, effectiveBb: 28, approximation: true });

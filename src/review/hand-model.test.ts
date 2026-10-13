@@ -23,6 +23,10 @@ describe('detectTournamentKind', () => {
     expect(detectTournamentKind('Knockout Special')).toBe('bounty');
     expect(detectTournamentKind('Daily Classic $1')).toBe('normal');
     expect(detectTournamentKind('Stepladder Deepstack')).toBe('normal');
+    expect(detectTournamentKind('Bounty Builder $5')).toBe('bounty');
+    expect(detectTournamentKind('Seattle Special')).toBe('normal');
+    expect(detectTournamentKind('Ticketmaster Cup')).toBe('normal');
+    expect(detectTournamentKind('Daily Steps $2')).toBe('satellit');
   });
 
   it('has German labels and a type guard', () => {

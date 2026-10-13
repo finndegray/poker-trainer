@@ -7,7 +7,7 @@ export const TOURNAMENT_KIND_LABELS: Record<TournamentKind, string> = {
   bounty: 'Bounty',
 };
 
-const SATELLITE = /\b(step|satellite|builder|ticket|seat)s?\b/i;
+const SATELLITE = /\b(?:step|satellite|ticket|seat)s?\b|\bt\$\s*builder\b/i;
 const BOUNTY = /\b(bounty|pko|mystery|knockout)\b/i;
 
 /** Satellite words win over bounty words: a satellite pays seats, not chips. */

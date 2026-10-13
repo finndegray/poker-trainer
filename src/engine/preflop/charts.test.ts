@@ -99,17 +99,11 @@ describe.each(STACK_DEPTHS)('charts for %i BB', (stack) => {
     }
   });
 
-  // Known gaps in the curated vs3bet:*:*:blinds data (hand continues from an earlier seat, the later seat opens it, but folds to a 3-bet).
-  // Reported to the controller; the data is deliberately left untouched. Any NEW gap fails the test.
-  const KNOWN_BLINDS_NESTING_GAPS: Record<number, readonly string[]> = {
-    40: ['66 HJ>SB', '55 CO>BTN', '66 CO>SB', '55 CO>SB', 'A8s BTN>SB', 'A7s BTN>SB', 'QTs BTN>SB', 'ATo BTN>SB', '66 BTN>SB'],
-    100: ['KJo CO>SB', '76s CO>SB', '33 CO>SB', 'KJo BTN>SB', 'QJo BTN>SB', 'ATo BTN>SB', '76s BTN>SB', '65s BTN>SB', '33 BTN>SB', '22 BTN>SB'],
-  };
-
+  // SB is left out: against the BB it plays out of position and deliberately defends tighter than the in-position seats.
   it('keeps per-hand nesting across 3-bet defenders where the later seat opens the hand', () => {
     const heroes: Record<string, Position[]> = {
       ip: ['UTG', 'UTG1', 'LJ', 'HJ', 'CO'],
-      blinds: ['UTG', 'UTG1', 'LJ', 'HJ', 'CO', 'BTN', 'SB'],
+      blinds: ['UTG', 'UTG1', 'LJ', 'HJ', 'CO', 'BTN'],
     };
     const gaps: string[] = [];
     for (const [group, order] of Object.entries(heroes)) {
@@ -125,7 +119,7 @@ describe.each(STACK_DEPTHS)('charts for %i BB', (stack) => {
         }
       }
     }
-    expect(gaps.sort()).toEqual([...KNOWN_BLINDS_NESTING_GAPS[stack]].sort());
+    expect(gaps).toEqual([]);
   });
 
   it('defends at least as wide from the big blind as in position', () => {

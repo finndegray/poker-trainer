@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Action } from '../../engine/pushfold';
 import { ActionBar } from '../components/ActionBar';
 import { FeedbackPanel } from '../components/FeedbackPanel';
@@ -29,9 +29,15 @@ export function PlayScreen({ mode, onBack }: { mode: PlayMode; onBack: () => voi
   // All start methods resume instead of restarting, so this is safe to repeat (StrictMode, tab hand-over).
   const sessionKind = game.session.kind;
   const hasSpot = game.current !== null;
+  // Entering the run tile after a finished run starts a new run; only the first effect run may do that,
+  // later runs (finishing a run) keep showing the result card.
+  const firstRun = useRef(true);
   useEffect(() => {
-    start();
-  }, [start, sessionKind, hasSpot]);
+    const snapshot = store.getSnapshot().session;
+    const restartFinishedRun = firstRun.current && mode === 'run' && snapshot.kind === 'run' && snapshot.outcome !== null;
+    firstRun.current = false;
+    start(restartFinishedRun);
+  }, [store, mode, start, sessionKind, hasSpot]);
 
   const onAction = useCallback((action: Action) => {
     store.answer(action);

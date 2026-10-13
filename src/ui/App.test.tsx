@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { aggressiveAction, evOf } from '../engine/pushfold';
+import { emptyState } from '../storage/schema';
 import { App } from './App';
 import { renderWithStore } from './test-utils';
 
@@ -77,5 +79,64 @@ describe('App', () => {
     expect(screen.getByText(/keinen dauerhaften Speicher/)).toBeTruthy();
     expect(screen.getByText(/in einem anderen Tab geöffnet/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sicherung herunterladen' })).toBeTruthy();
+  });
+  it('keeps an unanswered spot when coming back from the menu', () => {
+    const { store } = renderWithStore(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Training starten' }));
+    const spot = store.getSnapshot().current!.spot;
+    fireEvent.click(screen.getByRole('button', { name: '← Menü' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Training starten' }));
+    expect(store.getSnapshot().current!.spot).toBe(spot);
+    expect(screen.getByRole('button', { name: 'Fold' })).toBeTruthy();
+  });
+
+  it('deals a new spot and confirms when this tab becomes the writer during training', () => {
+    const { store } = renderWithStore(<App />, { info: { otherTabActive: true } });
+    fireEvent.click(screen.getByRole('button', { name: 'Training starten' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fold' }));
+    act(() => store.adoptSavedState(emptyState()));
+    expect(screen.getByText(/Ab jetzt speichert dieser Tab/)).toBeTruthy();
+    expect(screen.queryByText(/in einem anderen Tab geöffnet/)).toBeNull();
+    expect(screen.getByLabelText('Pokertisch')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Fold' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    expect(screen.queryByText(/Ab jetzt speichert dieser Tab/)).toBeNull();
+  });
+
+  it('deals a new daily spot when this tab becomes the writer during the daily', () => {
+    const { store } = renderWithStore(<App />, { info: { otherTabActive: true } });
+    fireEvent.click(screen.getByRole('button', { name: 'Daily spielen' }));
+    fireEvent.keyDown(window, { key: 'f' });
+    act(() => store.adoptSavedState(emptyState()));
+    expect(screen.getByText(/Ab jetzt speichert dieser Tab/)).toBeTruthy();
+    expect(screen.getByText(/^Daily Challenge · Spot 1\/20/)).toBeTruthy();
+    expect(screen.getByLabelText('Pokertisch')).toBeTruthy();
+  });
+
+  it('passes the update handler to the notice', () => {
+    const onApplyUpdate = vi.fn(() => Promise.resolve());
+    const { store } = renderWithStore(<App onApplyUpdate={onApplyUpdate} />);
+    act(() => store.setUpdateAvailable());
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt aktualisieren' }));
+    expect(onApplyUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('starts a new run from the home screen after a finished run', () => {
+    const { store, data } = renderWithStore(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Run starten' }));
+    for (let i = 0; i < 40 && !screen.queryByRole('heading', { name: 'Ausgeschieden' }); i++) {
+      const spot = store.getSnapshot().current!.spot;
+      const wrong = evOf(data, spot) > 0 ? 'fold' : aggressiveAction(spot);
+      act(() => {
+        store.answer(wrong);
+        store.next();
+      });
+    }
+    expect(screen.getByRole('heading', { name: 'Ausgeschieden' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Zum Menü' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run starten' }));
+    expect(screen.getByLabelText('Pokertisch')).toBeTruthy();
+    expect(screen.getByText(/^Level 1\/8 · 20 BB · Spot 1\/5$/)).toBeTruthy();
+    expect(screen.getByLabelText('Leben: 3 von 3')).toBeTruthy();
   });
 });

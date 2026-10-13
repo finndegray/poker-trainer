@@ -2,6 +2,7 @@ import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { getPushFoldData } from './data';
 import { ANALYSIS_VERSION } from '../review/analysis';
+import { type HandAnalyzer, createInlineAnalyzer } from '../review/analyzer';
 import {
   HAND_PREFIX,
   REVIEW_SCHEMA_VERSION,
@@ -101,6 +102,20 @@ describe('review store', () => {
     expect(open.hands[0].record.analysisVersion).toBe(ANALYSIS_VERSION);
     expect(open.hands[0].record.analysis.decisions).toHaveLength(6);
     expect(readHand(backend.dump()[key]).analysisVersion).toBe(ANALYSIS_VERSION);
+  });
+
+  it('rates imports with the analyzer it was given', async () => {
+    let calls = 0;
+    const inline = createInlineAnalyzer(getPushFoldData(), async () => {});
+    const analyzer: HandAnalyzer = {
+      analyze: (hands, onProgress) => {
+        calls++;
+        return inline.analyze(hands, onProgress);
+      },
+    };
+    const { store } = await setup({ analyzer });
+    await store.importText(`${bounty}\n\n${steps}`);
+    expect(calls).toBe(3);
   });
 
   it('changes the kind of a tournament and counts errors again', async () => {

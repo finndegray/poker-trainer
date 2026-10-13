@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
-import type { PushFoldData } from '../engine/pushfold-data';
-import { ANALYSIS_VERSION, type HandAnalysis, analyzeHand } from './analysis';
+import { ANALYSIS_VERSION, type HandAnalysis } from './analysis';
+import type { HandAnalyzer } from './analyzer';
 import { ArchiveFormatError, type HandRecord, REVIEW_SCHEMA_VERSION, type TournamentRecord } from './archive';
 import { type ParsedHand, type SkippedHand, parseHistory } from './parse';
 import { summarize } from './summary';
@@ -11,8 +11,6 @@ export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 export const MAX_UNZIPPED_BYTES = 50 * 1024 * 1024;
 export const MAX_ZIP_ENTRIES = 1000;
 export const MAX_HANDS_PER_IMPORT = 20_000;
-/** Hands analysed between two pauses that let the browser paint the progress bar. */
-export const HANDS_PER_CHUNK = 25;
 
 export type ImportFile = { name: string; bytes: Uint8Array };
 export type ImportText = { name: string; text: string };
@@ -148,29 +146,20 @@ export function countSkipped(skipped: readonly SkippedHand[]): SkipCount[] {
 
 export type AnalyzedHand = { hand: ParsedHand; analysis: HandAnalysis };
 
-const nextTick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-/** Rates all planned hands on the main thread in chunks, reporting progress between the chunks. */
+/** Rates all planned hands with `analyzer`, tournament by tournament, reporting progress per tournament and hand. */
 export async function analyzePlan(
   plan: ImportPlan,
-  data: PushFoldData,
+  analyzer: HandAnalyzer,
   onProgress: (p: ImportProgress) => void,
-  pause: () => Promise<void> = nextTick,
 ): Promise<Map<string, AnalyzedHand[]>> {
   const out = new Map<string, AnalyzedHand[]>();
   const ids = [...plan.tournaments.keys()];
   for (const [t, id] of ids.entries()) {
     const hands = plan.tournaments.get(id)!;
-    const analyzed: AnalyzedHand[] = [];
-    for (const [h, hand] of hands.entries()) {
-      if (h % HANDS_PER_CHUNK === 0) {
-        onProgress({ tournament: t + 1, tournaments: ids.length, hand: h + 1, hands: hands.length });
-        await pause();
-      }
-      analyzed.push({ hand, analysis: analyzeHand(hand, data) });
-    }
-    onProgress({ tournament: t + 1, tournaments: ids.length, hand: hands.length, hands: hands.length });
-    out.set(id, analyzed);
+    const progress = (hand: number) => onProgress({ tournament: t + 1, tournaments: ids.length, hand, hands: hands.length });
+    progress(0);
+    const analyses = await analyzer.analyze(hands, progress);
+    out.set(id, hands.map((hand, i) => ({ hand, analysis: analyses[i] })));
   }
   return out;
 }

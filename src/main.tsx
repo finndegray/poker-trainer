@@ -8,6 +8,7 @@ import { createUpdatePolicy } from './app/update-policy';
 import { registerSW } from 'virtual:pwa-register';
 import { mulberry32 } from './engine/rng';
 import { indexedDbReviewBackend, memoryReviewBackend } from './review/archive';
+import { createInlineAnalyzer, createWorkerAnalyzer } from './review/analyzer';
 import { App } from './ui/App';
 import { GameProvider } from './ui/GameContext';
 import { ReviewProvider } from './ui/ReviewContext';
@@ -67,11 +68,18 @@ async function bootstrap(): Promise<void> {
   const ready = store;
   if (updateNotice) ready.setUpdateAvailable();
   // The hand archive lives in its own database and follows the save's storage mode and writer lock.
+  // Hands are rated in a Web Worker (Monte-Carlo equities); without a worker on the main thread in chunks.
+  const analyzer = createWorkerAnalyzer(
+    getPushFoldData(),
+    () => new Worker(new URL('./review/analysis.worker.ts', import.meta.url), { type: 'module' }),
+    createInlineAnalyzer(getPushFoldData()),
+  );
   const review = createReviewStore({
     backend: opened.info.mode === 'indexeddb' ? indexedDbReviewBackend() : memoryReviewBackend(),
     data: getPushFoldData(),
     canWrite: () => opened.canWrite(),
     readOnly: opened.info.readOnly,
+    analyzer,
   });
   void review.load();
   opened.onWriterAcquired((fresh) => {

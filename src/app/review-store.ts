@@ -1,5 +1,6 @@
 import type { PushFoldData } from '../engine/pushfold-data';
 import { ANALYSIS_VERSION, analyzeHand } from '../review/analysis';
+import { type HandAnalyzer, createInlineAnalyzer } from '../review/analyzer';
 import {
   type ArchiveProblem,
   type HandRecord,
@@ -51,6 +52,8 @@ export type ReviewStoreDeps = {
   canWrite: () => boolean;
   /** The save comes from a newer app version. */
   readOnly: boolean;
+  /** Rates hands; main.tsx passes the Web Worker analyzer. Default: on the main thread in chunks. */
+  analyzer?: HandAnalyzer;
   pause?: () => Promise<void>;
 };
 export type ReviewStore = {
@@ -82,6 +85,7 @@ const byNewest = (a: TournamentRecord, b: TournamentRecord) => b.lastPlayedAt.lo
 
 export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
   const { backend, data, canWrite, readOnly } = deps;
+  const analyzer = deps.analyzer ?? createInlineAnalyzer(data, deps.pause);
   let newerArchive = false;
   const listeners = new Set<() => void>();
   let chain: Promise<unknown> = Promise.resolve();
@@ -169,7 +173,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
     const plan = planImport(texts, existing, blocked);
     update({ progress: { tournament: 0, tournaments: plan.tournaments.size, hand: 0, hands: 0 } });
     try {
-      const analyzed = await analyzePlan(plan, data, (progress) => update({ progress }), deps.pause);
+      const analyzed = await analyzePlan(plan, analyzer, (progress) => update({ progress }));
       let imported = 0;
       let tournaments = 0;
       const failures: string[] = [];

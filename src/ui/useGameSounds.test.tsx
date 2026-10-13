@@ -77,4 +77,17 @@ describe('useGameSounds', () => {
     act(() => store.setSound(true));
     expect(player.play).toHaveBeenCalledTimes(played);
   });
+
+  it('plays deal and the verdict sound in the starthand training', () => {
+    const player = spyPlayer();
+    const { store } = renderWithStore(<Probe player={player} />);
+    act(() => store.startPreflop());
+    expect(player.play).toHaveBeenLastCalledWith('deal');
+    let verdict = '';
+    act(() => {
+      verdict = store.answerPreflop('fold').outcome.grade.verdict;
+    });
+    expect(player.play).toHaveBeenLastCalledWith(verdict === 'wrong' ? 'wrong' : 'correct');
+    expect(player.play).toHaveBeenCalledTimes(2);
+  });
 });

@@ -7,8 +7,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['icons/apple-touch-icon.png'],
+      // The app asks before activating a new version, so training is never reloaded mid-spot.
+      registerType: 'prompt',
       manifest: {
         name: 'Poker-Trainer',
         short_name: 'Poker',

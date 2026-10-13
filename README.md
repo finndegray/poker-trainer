@@ -24,3 +24,7 @@ Die Push/Fold-Daten liegen fertig in `src/data/pushfold.json`. Neu berechnen (da
 
     npm run data:equity
     npm run data:pushfold
+
+## Veröffentlichung
+
+Einmalig im Repository unter **Settings → Pages → Source** „GitHub Actions“ auswählen (im kostenlosen Plan muss das Repository dafür öffentlich sein). Danach wird jeder Push auf `main` automatisch auf GitHub Pages veröffentlicht.

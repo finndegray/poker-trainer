@@ -23,7 +23,7 @@ describe('evOf', () => {
   it('rejects invalid hand indices', () => {
     const base = { kind: 'open', position: 'BTN', stack: 10 } as const;
     for (const hand of [-1, 169, 1.5, Number.NaN]) {
-      expect(() => evOf(data, { ...base, hand })).toThrow(/Hand/);
+      expect(() => evOf(data, { ...base, hand })).toThrow(/Ungültiger Hand-Index/);
     }
   });
 });

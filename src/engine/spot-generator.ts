@@ -52,10 +52,10 @@ function pickWeighted<T>(items: readonly T[], weight: (item: T) => number, rng: 
   let total = 0;
   for (const it of items) {
     const w = weight(it);
-    if (!Number.isFinite(w) || w < 0) throw new Error(`Ungültiges Gewicht: ${w}`);
+    if (!Number.isFinite(w) || w < 0) throw new Error(`UngÃ¼ltiges Gewicht: ${w}`);
     total += w;
   }
-  if (!Number.isFinite(total) || total <= 0) throw new Error(`Ungültiges Gesamtgewicht: ${total}`);
+  if (!Number.isFinite(total) || total <= 0) throw new Error(`UngÃ¼ltiges Gesamtgewicht: ${total}`);
   let r = rng() * total;
   for (const it of items) {
     r -= weight(it);

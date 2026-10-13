@@ -106,10 +106,10 @@ describe('generateSpot edge cases', () => {
   it('rejects invalid category weights', () => {
     const rng = mulberry32(1);
     const w = (v: number) => new Map([['open|BTN|6-10', v]]);
-    expect(() => generateSpot(data, rng, { categoryWeights: w(Number.NaN) })).toThrow(/gewicht/i);
-    expect(() => generateSpot(data, rng, { categoryWeights: w(-1) })).toThrow(/gewicht/i);
+    expect(() => generateSpot(data, rng, { categoryWeights: w(Number.NaN) })).toThrow(/Ungültiges (Gesamt)?[Gg]ewicht/);
+    expect(() => generateSpot(data, rng, { categoryWeights: w(-1) })).toThrow(/Ungültiges (Gesamt)?[Gg]ewicht/);
     const zero = new Map([...['open', 'call'].flatMap((k) => ['UTG', 'UTG1', 'LJ', 'HJ', 'CO', 'BTN', 'SB', 'BB'].flatMap((p) => ['1-5', '6-10', '11-15', '16-20'].map((b) => [`${k}|${p}|${b}`, 0] as const)))]);
-    expect(() => generateSpot(data, rng, { categoryWeights: zero })).toThrow(/gewicht/i);
+    expect(() => generateSpot(data, rng, { categoryWeights: zero })).toThrow(/Ungültiges (Gesamt)?[Gg]ewicht/);
   });
 });
 

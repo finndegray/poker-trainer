@@ -32,7 +32,7 @@ export function evRow(data: PushFoldData, s: Situation): readonly number[] {
 
 export function evOf(data: PushFoldData, spot: Spot): number {
   if (!Number.isInteger(spot.hand) || spot.hand < 0 || spot.hand >= HAND_COUNT) {
-    throw new Error(`Ungültiger Hand-Index: ${spot.hand}`);
+    throw new Error(`UngÃ¼ltiger Hand-Index: ${spot.hand}`);
   }
   return evRow(data, spot)[spot.hand];
 }

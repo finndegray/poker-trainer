@@ -156,7 +156,8 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
   // Remembered separately, so the update notice comes back after the writer notice is dismissed.
   let updateAvailable = false;
   let hiddenSince: number | null = null;
-  // Spec 10: every fourth deal of a training may come from the queue. Counted per training and only in memory.
+  // Spec 10: every fourth deal of a training may come from the queue. One counter per training type, in memory only;
+  // it keeps running across sessions of the same page, so the rate stays one in four.
   let pushfoldDeals = 0;
   let preflopDeals = 0;
   let lastPushfoldKey: string | null = null;

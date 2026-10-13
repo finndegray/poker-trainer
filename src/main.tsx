@@ -81,10 +81,11 @@ async function bootstrap(): Promise<void> {
     readOnly: opened.info.readOnly,
     analyzer,
   });
-  void review.load();
+  // Archived hands from an older analysis version are rated again in the background (writing tab only).
+  review.load().then(() => review.refreshStale()).catch(logError);
   opened.onWriterAcquired((fresh) => {
     ready.adoptSavedState(fresh);
-    review.refreshAccess().catch(logError);
+    review.refreshAccess().then(() => review.refreshStale()).catch(logError);
   });
   document.addEventListener('visibilitychange', () => {
     const visible = document.visibilityState === 'visible';

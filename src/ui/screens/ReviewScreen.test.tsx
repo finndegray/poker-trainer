@@ -39,8 +39,28 @@ describe('ReviewScreen overview and import', () => {
     expect(within(balance).getByText('Importiert: 6 · Schon vorhanden: 0 · Übersprungen: 0')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Zur Übersicht' }));
     const row = screen.getByRole('row', { name: /Daily Classic \$1/ });
-    expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual(['13.10.2026', 'Normal', '6', '3', '–', '50']);
+    expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual(['13.10.2026', 'Normal', '6', '3', '0', '50']);
     expect(screen.getByRole('img', { name: 'Fehler pro 100 Hände der letzten 8 Wochen' })).toBeTruthy();
+  });
+
+  it('shows a dash for postflop errors of a tournament that still waits for the new rating', async () => {
+    const { memoryReviewBackend } = await import('../../review/archive');
+    const backend = memoryReviewBackend();
+    const first = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />, { reviewBackend: backend });
+    await act(async () => {
+      await first.loaded;
+      await first.review.importText(bounty);
+    });
+    first.unmount();
+    // The record as Plan 7 wrote it: no analysis version, so its summary has no postflop rating yet.
+    const key = 'tournament:318083464';
+    const { analysisVersion: _, ...plan7 } = JSON.parse(backend.dump()[key]);
+    await backend.setMany([[key, JSON.stringify(plan7)]]);
+    const second = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />, { reviewBackend: backend, info: { otherTabActive: true } });
+    await act(() => second.loaded);
+    const row = screen.getByRole('row', { name: /Bounty Hunters/ });
+    expect(within(row).getAllByRole('cell')[4].textContent).toBe('–');
+    expect(within(row).getAllByRole('cell')[4].getAttribute('title')).toBe('Wird neu bewertet, sobald du das Turnier öffnest');
   });
 
   it('imports files and lists skipped files with their reason', async () => {

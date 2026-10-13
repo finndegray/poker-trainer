@@ -1,5 +1,6 @@
 import { formatCount, formatPer100, formatPlayedAt } from '../../app/format';
 import { localDateKey } from '../../game/streak';
+import { ANALYSIS_VERSION } from '../../review/analysis';
 import { errorsPer100, weeklyErrorTrend } from '../../review/summary';
 import { TOURNAMENT_KIND_LABELS } from '../../review/tournament-kind';
 import { TrendBars, shortDate } from '../components/TrendChart';
@@ -31,12 +32,19 @@ export function ReviewOverview({ onImport, onOpen, now }: { onImport: () => void
       <section className="panel review-intro">
         <p className="muted">
           Lade deine GGPoker-Hand-Historien (.txt oder .zip) hoch. Jede Preflop-Entscheidung wird mit den Push/Fold-Daten
-          und den Starthand-Charts bewertet.
+          und den Starthand-Charts bewertet, Flop, Turn und River mit Faustregeln (Equity gegen die geschätzte Range des
+          Gegners und Pot Odds).
         </p>
         <button type="button" className="btn btn--gold" onClick={onImport} disabled={!review.writable}>
           Hände importieren
         </button>
         {review.lockReason && <p className="muted">{review.lockReason}</p>}
+        {review.reanalysis && (
+          <p className="muted" aria-live="polite">
+            Bewertung wird aktualisiert: Turnier {review.reanalysis.tournament} von {review.reanalysis.tournaments} · Hand{' '}
+            {formatCount(review.reanalysis.hand)} von {formatCount(review.reanalysis.hands)}
+          </p>
+        )}
       </section>
       {review.tournaments.length === 0 ? (
         review.status === 'ready' && <p className="panel muted">Noch keine Hände importiert.</p>
@@ -73,7 +81,11 @@ export function ReviewOverview({ onImport, onOpen, now }: { onImport: () => void
                       <td>{TOURNAMENT_KIND_LABELS[t.kind]}</td>
                       <td>{formatCount(t.summary.hands)}</td>
                       <td>{formatCount(t.summary.preflopErrors)}</td>
-                      <td title="Postflop-Bewertung folgt">–</td>
+                      {(t.analysisVersion ?? 1) === ANALYSIS_VERSION ? (
+                        <td>{formatCount(t.summary.postflopErrors)}</td>
+                      ) : (
+                        <td title="Wird neu bewertet, sobald du das Turnier öffnest">–</td>
+                      )}
                       <td>{formatPer100(errorsPer100(t.summary.preflopErrors + t.summary.postflopErrors, t.summary.hands))}</td>
                     </tr>
                   ))}

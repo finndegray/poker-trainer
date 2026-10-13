@@ -77,10 +77,36 @@
 }
 
 .filters {
+  display: block;
+  padding: 6px 12px;
+}
+
+.filters__summary {
+  min-height: 36px;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px 12px;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  color: var(--cream);
+}
+
+.filters__summary::-webkit-details-marker {
+  display: none;
+}
+
+.filters__summary::after {
+  content: '▾';
+  margin-left: auto;
+  color: var(--gold);
+}
+
+.filters[open] .filters__summary::after {
+  content: '▴';
+}
+
+.filters[open] .filter-group {
+  margin: 4px 0 8px;
 }
 
 .filter-group {

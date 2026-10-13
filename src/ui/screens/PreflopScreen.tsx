@@ -51,6 +51,12 @@ function FilterGroup<T extends string | number>({ label, options, value, disable
   );
 }
 
+export function filterSummary(filter: PreflopFilter): string {
+  const kind = filter.kind === 'all' ? 'alle Spots' : PREFLOP_KIND_LABELS[filter.kind];
+  const stack = filter.stack === 'all' ? 'alle Stacks' : `${filter.stack} BB`;
+  return `${kind} · ${stack}`;
+}
+
 export function PreflopScreen({ onBack }: { onBack: () => void }) {
   const store = useGameStore();
   const game = useGame();
@@ -85,10 +91,12 @@ export function PreflopScreen({ onBack }: { onBack: () => void }) {
         <span className="muted">Starthand-Training</span>
       </div>
       <StatusBar status={game.status} xp={game.save.profile.xp} />
-      <section className="panel filters" aria-label="Filter">
+      {/* Collapsed by default so table and action buttons fit on a phone screen. */}
+      <details className="panel filters" aria-label="Filter">
+        <summary className="filters__summary">Filter: {filterSummary(filter)}</summary>
         <FilterGroup label="Spot-Typ" options={KIND_OPTIONS} value={filter.kind} disabled={locked} onChange={(kind) => setFilter({ kind })} />
         <FilterGroup label="Stack" options={STACK_OPTIONS} value={filter.stack} disabled={locked} onChange={(stack) => setFilter({ stack })} />
-      </section>
+      </details>
       {current && (
         <>
           <PreflopTable key={current.shownAt} spot={current.spot} cards={current.cards} />

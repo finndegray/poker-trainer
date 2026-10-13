@@ -38,6 +38,14 @@ describe('PreflopScreen', () => {
     expect(kinds.getByRole('button', { name: 'Gegen Open-Raise' }).getAttribute('aria-pressed')).toBe('true');
     expect(kinds.getByRole('button', { name: 'Open-Raise' }).getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByRole('button', { name: 'Call' })).toBeTruthy();
+    expect(screen.getByText('Filter: Gegen Open-Raise · alle Stacks')).toBeTruthy();
+  });
+
+  it('keeps the filters collapsed behind a summary so the table fits on a phone', () => {
+    renderWithStore(<PreflopScreen onBack={() => {}} />, { initial: withFilter({ kind: 'vs3bet', stack: 40 }) });
+    const summary = screen.getByText('Filter: Gegen 3-Bet · 40 BB');
+    expect(summary.tagName).toBe('SUMMARY');
+    expect(summary.closest('details')!.open).toBe(false);
   });
 
   it('answers with the keyboard: C calls, R and A are aggressive, F folds, space continues', () => {

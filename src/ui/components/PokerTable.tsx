@@ -10,7 +10,7 @@ import './PokerTable.css';
 
 function seatStyle(offset: number): CSSProperties {
   const angle = ((90 + offset * 45) * Math.PI) / 180;
-  return { left: `${50 + 44 * Math.cos(angle)}%`, top: `${50 + 41 * Math.sin(angle)}%` };
+  return { left: `${50 + 40 * Math.cos(angle)}%`, top: `${50 + 41 * Math.sin(angle)}%` };
 }
 
 function behindText(n: number): string {

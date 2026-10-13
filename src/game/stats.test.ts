@@ -4,7 +4,7 @@ import type { PreflopSpot } from '../engine/preflop/spots';
 import type { Spot, Verdict } from '../engine/pushfold';
 import {
   accuracy, accuracyBy, adaptiveWeights, byKind, byPosition, byStackBucket, handErrorMatrix, isPreflopRecord,
-  preflopRecords, pushFoldRecords, weeklyTrend, type PreflopRecord, type PushFoldRecord,
+  preflopAdaptiveWeights, preflopRecords, pushFoldRecords, weeklyTrend, type PreflopRecord, type PushFoldRecord,
 } from './stats';
 
 let ts = 0;
@@ -104,5 +104,12 @@ describe('push/fold and starthand records', () => {
     expect(m.errors[parseHand('A7o')]).toBe(0);
     expect([...adaptiveWeights([pre]).keys()]).toEqual([]);
     expect([...adaptiveWeights([pre, rec(btn(3), 'wrong')]).keys()]).toEqual(['open|BTN|1-5']);
+  });
+});
+
+describe('preflopAdaptiveWeights', () => {
+  it('weights starthand categories by their own errors and ignores push/fold', () => {
+    const w = preflopAdaptiveWeights([preRec(rfiCo(), 'wrong'), preRec(rfiCo(), 'correct'), rec(btn(10), 'wrong')]);
+    expect([...w.entries()]).toEqual([['rfi|CO|100', 3]]);
   });
 });

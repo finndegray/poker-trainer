@@ -6,7 +6,7 @@ import { comparePreflopPositions, preflopCells } from '../../engine/preflop/grad
 import { chart } from '../../engine/pushfold';
 import type { PushFoldData } from '../../engine/pushfold-data';
 import type { HeroDecision } from '../../review/analysis';
-import type { PostflopRating } from '../../review/postflop';
+import { type PostflopRating, potOdds } from '../../review/postflop';
 import { IMPLIED_ODDS_TEXT, POSTFLOP_DISCLAIMER, POSTFLOP_REASON_TEXT, POSTFLOP_VERDICT_LABELS, VILLAIN_ROLE_LABELS } from '../../review/postflop-text';
 import { UNRATED_TEXT } from '../../review/preflop';
 import { SATELLITE_HINT, decisionOutcome } from '../../review/summary';
@@ -29,9 +29,10 @@ function Numbers({ decision, bigBlind }: { decision: HeroDecision; bigBlind: num
 
 /** Pot odds and bet size straight from the decision; shown for unrated postflop decisions too (spec 7). */
 function PotOdds({ decision }: { decision: HeroDecision }) {
-  const { pot, toCall, amount, action } = decision;
+  const { toCall, amount, action } = decision;
+  const { pot, needed } = potOdds(decision.pot, toCall, decision.excess ?? 0);
   const parts: string[] = [];
-  if (toCall > 0) parts.push(`nötige Equity ${formatPercent(toCall / (pot + toCall))}`);
+  if (toCall > 0) parts.push(`nötige Equity ${formatPercent(needed)}`);
   if (action === 'bet') parts.push(`Einsatz ${formatPercent(amount / pot)} vom Pot`);
   if (action === 'raise') parts.push(`Raise ${formatPercent((amount - toCall) / (pot + toCall))} vom Pot`);
   return parts.length > 0 ? <p className="feedback__line feedback__ev">{parts.join(' · ')}</p> : null;

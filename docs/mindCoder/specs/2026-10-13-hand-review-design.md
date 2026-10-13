@@ -83,6 +83,9 @@ Bewertet wird jede Hero-Aktion auf Flop, Turn und River, solange genau ein Gegne
 
 - Auf Flop und Turn erhält ein Call mit Draw (mindestens 8 Outs auf Straße oder Flush) einen Bonus von 5 Punkten (Implied Odds); am River nicht.
 - Alles andere: `passt`. Jede Postflop-Einschätzung trägt „Faustregel, kein Solver-Ergebnis“.
+- Implied Odds: Der Bonus gilt nur, wenn nach dem Call beide Spieler noch Chips hinter sich haben.
+- Pot Odds: Es zählt nur der Teil von Gegners Bet, den der Hero mit seinem Stack mitgehen kann; der Rest geht an den Gegner zurück und steht nicht im Pot, den der Hero gewinnen kann.
+- Grenzen der Faustregel: Die eingegrenzte Range enthält keine Bluffs, Fold Equity wird nicht berücksichtigt, die Equity ist roh (ohne Realisierung), und sehr enge Chart-Ranges lassen Bluff-Catcher-Calls schnell zu hart aussehen.
 - Bewertungsversion: Jede Analyse speichert eine Versionsnummer; ändert sich die Logik, werden archivierte Hände beim Öffnen neu bewertet.
 
 ## 8. Oberfläche

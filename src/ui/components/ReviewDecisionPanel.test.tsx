@@ -101,4 +101,10 @@ describe('ReviewDecisionPanel', () => {
     expect(screen.getByText('Multiway')).toBeTruthy();
     expect(screen.getByText('nötige Equity 29 %')).toBeTruthy();
   });
+
+  it('uses the pot without the unmatchable part of an over-bet for the pot odds of an unrated decision', () => {
+    const rating: DecisionRating = { model: 'unrated', reason: 'multiwayPostflop' };
+    render(<ReviewDecisionPanel decision={decision(rating, { ...riverCall, action: 'fold', pot: 250, toCall: 100, excess: 50 })} kind="normal" bigBlind={100} data={data} />);
+    expect(screen.getByText('nötige Equity 33 %')).toBeTruthy();
+  });
 });

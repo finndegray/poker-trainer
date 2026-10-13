@@ -46,15 +46,27 @@ export type PostflopRating = {
   combos: number;
 };
 
+/**
+ * Pot odds from the pot before the action and the part of the villain's bet the hero can match.
+ * `excess` (the part he cannot match) goes back to the villain, so it is not in the pot the hero can win.
+ */
+export function potOdds(statePot: number, toCall: number, excess: number) {
+  const pot = statePot - excess;
+  return { pot, needed: toCall > 0 ? toCall / (pot + toCall) : 0 };
+}
+
+/** The part of the bet in front of the hero that exceeds his stack. */
+export const unmatchedBet = (state: TableState): number => {
+  const hero = state.players.find((p) => p.isHero)!;
+  return Math.max(0, maxStreetBet(state) - hero.streetBet - hero.stack);
+};
+
 /** Spec 7: equity, pot odds, bet size and SPR from the table right before the hero acted. */
 export function postflopNumbers(event: ActionEvent, state: TableState, villain: string) {
   const hero = state.players.find((p) => p.isHero)!;
   const other = state.players.find((p) => p.name === villain)!;
   const toCall = Math.min(hero.stack, maxStreetBet(state) - hero.streetBet);
-  // The part of the bet the hero cannot match goes back to the villain: it is not in the pot the hero can win.
-  const excess = Math.max(0, maxStreetBet(state) - hero.streetBet - hero.stack);
-  const pot = state.pot - excess;
-  const needed = toCall > 0 ? toCall / (pot + toCall) : 0;
+  const { pot, needed } = potOdds(state.pot, toCall, unmatchedBet(state));
   const betShare =
     event.action === 'bet' ? event.amount / pot : event.action === 'raise' ? (event.amount - toCall) / (pot + toCall) : null;
   return { toCall, needed, betShare, spr: Math.min(hero.stack, other.stack) / pot };

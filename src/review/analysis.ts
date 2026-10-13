@@ -1,7 +1,7 @@
 import type { PushFoldData } from '../engine/pushfold-data';
 import { maxStreetBet, positionsOf, walkHand } from './hand-model';
 import { HERO, type ActionType, type ParsedHand, type Street } from './parse';
-import { ratePostflop } from './postflop';
+import { ratePostflop, unmatchedBet } from './postflop';
 import { type DecisionRating, ratePreflopDecision } from './preflop';
 
 /** Bump when the rating logic changes: archived hands with another version are rated again when opened. */
@@ -18,6 +18,8 @@ export type HeroDecision = {
   toCall: number;
   stack: number;
   amount: number;
+  /** The part of the bet in front of the hero that exceeds his stack (omitted when 0); needed for the pot odds of unrated decisions. */
+  excess?: number;
   /** Street total of a raise, as in the hand history. */
   to: number | null;
   rating: DecisionRating;
@@ -47,6 +49,7 @@ export function analyzeHand(hand: ParsedHand, data: PushFoldData): HandAnalysis 
       stack: hero.stack,
       amount: event.amount,
       to: event.to,
+      ...(unmatchedBet(state) > 0 ? { excess: unmatchedBet(state) } : {}),
       rating,
     });
   });

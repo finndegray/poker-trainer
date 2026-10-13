@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HAND_COUNT, compatMatrix } from '../../src/engine/cards';
+import { HAND_COUNT, compatMatrix, parseHand } from '../../src/engine/cards';
 import { seatOf } from '../../src/engine/positions';
 import { callerEvs, shoverEvs, solveSpot, type NashInput } from './nash';
 
@@ -46,7 +46,33 @@ describe('EV formulas', () => {
   });
 });
 
+describe('EV formulas (chain and card removal)', () => {
+  it('chains two callers for a BTN shove', () => {
+    const out = new Float64Array(N);
+    const half = () => new Float64Array(N).fill(0.5);
+    shoverEvs(input({ equity: flatEquity, shoverSeat: seatOf('BTN') }), [half(), half()], out);
+    // 0.5*(11-10) + 0.25*(10.75-10) + 0.25*2.5 = 0.5 + 0.1875 + 0.625 = 1.3125
+    const expected = 0.5 * (0.5 * 22 - 10) + 0.25 * (0.5 * 21.5 - 10) + 0.25 * 2.5;
+    expect(expected).toBeCloseTo(1.3125, 10);
+    for (let h = 0; h < N; h++) expect(out[h]).toBeCloseTo(expected, 10);
+  });
+
+  it('applies card removal in the right direction', () => {
+    const q = new Float64Array(N);
+    q[parseHand('AA')] = 1;
+    const out = new Float64Array(N);
+    shoverEvs(input({ equity: flatEquity }), [q], out);
+    // being called is worse (1.0) than folding out (2.5); AA blocks the caller's AA
+    expect(out[parseHand('AA')]).toBeGreaterThan(out[parseHand('72o')]);
+  });
+});
+
 describe('solveSpot', () => {
+  it('keeps every single hand within 0.1 BB of its best response', () => {
+    const r = solveSpot(input({ shoverSeat: seatOf('CO') }));
+    expect(r.maxHandRegret).toBeLessThan(0.1);
+  });
+
   it('lets the BB call everything at 1 BB', () => {
     const r = solveSpot(input({ stack: 1 }));
     for (let h = 0; h < N; h++) expect(r.callEv[0][h]).toBeGreaterThanOrEqual(0);

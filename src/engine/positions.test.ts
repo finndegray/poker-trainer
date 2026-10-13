@@ -19,6 +19,7 @@ describe('positions', () => {
 
   it('computes the pot when called', () => {
     expect(potWhenCalled(10, seatOf('SB'), seatOf('BB'))).toBe(21);
+    expect(potWhenCalled(10, seatOf('BTN'), seatOf('SB'))).toBe(22);
     expect(potWhenCalled(10, seatOf('BTN'), seatOf('BB'))).toBe(21.5);
     expect(potWhenCalled(10, seatOf('UTG'), seatOf('CO'))).toBe(22.5);
   });

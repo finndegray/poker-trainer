@@ -19,6 +19,7 @@ export type NashResult = {
   shoveFreq: Float64Array;
   callFreq: Float64Array[];
   exploitability: number;
+  maxHandRegret: number;
 };
 
 const callerCount = (shoverSeat: number): number => SEATS - 1 - shoverSeat;
@@ -69,11 +70,28 @@ export function callerEvs(input: NashInput, k: number, shoveFreq: Float64Array, 
   }
 }
 
-// Combo-weighted gain of the best response over the current mixed strategy.
-function regret(ev: Float64Array, freq: Float64Array): number {
+const handRegret = (ev: number, f: number): number => Math.max(ev, 0) - f * ev;
+
+// Weighted gain of the best response over the current mixed strategy.
+function regret(ev: Float64Array, freq: Float64Array, weight: Float64Array): number {
   let gain = 0;
-  for (let h = 0; h < N; h++) gain += COMBO_WEIGHT[h] * (Math.max(ev[h], 0) - freq[h] * ev[h]);
-  return gain;
+  let total = 0;
+  for (let h = 0; h < N; h++) {
+    gain += weight[h] * handRegret(ev[h], freq[h]);
+    total += weight[h];
+  }
+  return total > 0 ? gain / total : 0;
+}
+
+// Probability of holding each class given that the shover shoves (weights need not be normalised).
+function callerWeights(input: NashInput, shoveFreq: Float64Array): Float64Array {
+  const w = new Float64Array(N);
+  for (let h = 0; h < N; h++) {
+    let reach = 0;
+    for (let x = 0; x < N; x++) reach += input.compat[h * N + x] * shoveFreq[x];
+    w[h] = COMBO_WEIGHT[h] * reach;
+  }
+  return w;
 }
 
 export function solveSpot(input: NashInput): NashResult {
@@ -96,8 +114,14 @@ export function solveSpot(input: NashInput): NashResult {
   shoverEvs(input, callFreq, shoveEv);
   for (let k = 0; k < callers; k++) callerEvs(input, k, shoveFreq, callEv[k]);
 
-  let exploitability = regret(shoveEv, shoveFreq);
-  for (let k = 0; k < callers; k++) exploitability = Math.max(exploitability, regret(callEv[k], callFreq[k]));
+  const callWeight = callerWeights(input, shoveFreq);
+  let exploitability = regret(shoveEv, shoveFreq, COMBO_WEIGHT);
+  let maxHandRegret = 0;
+  for (let h = 0; h < N; h++) maxHandRegret = Math.max(maxHandRegret, handRegret(shoveEv[h], shoveFreq[h]));
+  for (let k = 0; k < callers; k++) {
+    exploitability = Math.max(exploitability, regret(callEv[k], callFreq[k], callWeight));
+    for (let h = 0; h < N; h++) maxHandRegret = Math.max(maxHandRegret, handRegret(callEv[k][h], callFreq[k][h]));
+  }
 
-  return { shoveEv, callEv, shoveFreq, callFreq, exploitability };
+  return { shoveEv, callEv, shoveFreq, callFreq, exploitability, maxHandRegret };
 }

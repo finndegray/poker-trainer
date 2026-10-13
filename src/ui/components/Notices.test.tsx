@@ -25,6 +25,27 @@ describe('Notices', () => {
     expect(onApplyUpdate).toHaveBeenCalledOnce();
   });
 
+  it('logs a failing update instead of leaving an unhandled rejection', async () => {
+    const error = new Error('kein Netz');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onApplyUpdate = vi.fn(() => Promise.reject(error));
+    render(
+      <Notices
+        info={info}
+        saveError={null}
+        now={now}
+        notice="update-available"
+        onDismissNotice={() => {}}
+        onApplyUpdate={onApplyUpdate}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt aktualisieren' }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(consoleError).toHaveBeenCalledWith(error);
+    consoleError.mockRestore();
+  });
+
   it('tells that this tab saves now and can be dismissed', () => {
     const onDismissNotice = vi.fn();
     render(<Notices info={info} saveError={null} now={now} notice="writer-acquired" onDismissNotice={onDismissNotice} />);

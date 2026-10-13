@@ -27,7 +27,7 @@ export function Notices({ info, saveError, now, notice, onDismissNotice, onApply
       {notice === 'update-available' && (
         <div className="notice">
           <p>Eine neue Version ist verfügbar.</p>
-          <button type="button" className="btn btn--gold" onClick={() => void onApplyUpdate?.()}>
+          <button type="button" className="btn btn--gold" onClick={() => onApplyUpdate?.().catch((error: unknown) => console.error(error))}>
             Jetzt aktualisieren
           </button>
         </div>

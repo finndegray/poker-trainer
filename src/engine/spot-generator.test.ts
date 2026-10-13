@@ -74,3 +74,42 @@ describe('generateSpot', () => {
     expect(hits / 2000).toBeGreaterThan(0.18);
   });
 });
+
+describe('generateSpot edge cases', () => {
+  it('never produces the non-decision BB call at 1 BB', () => {
+    const rng = mulberry32(3);
+    for (let i = 0; i < 2000; i++) {
+      const s = generateSpot(data, rng, { kinds: ['call'], minStack: 1, maxStack: 1 });
+      expect(s.position).not.toBe('BB');
+    }
+  });
+
+  it('keeps the call|BB|1-5 category for stacks 2-5', () => {
+    const rng = mulberry32(4);
+    const keys = new Set<string>();
+    for (let i = 0; i < 2000; i++) {
+      keys.add(categoryKey(generateSpot(data, rng, { kinds: ['call'], minStack: 2, maxStack: 5 })));
+    }
+    expect(keys.has('call|BB|1-5')).toBe(true);
+  });
+
+  it('draws hands by combo share with randomShare 1', () => {
+    const rng = mulberry32(11);
+    const n = 5000;
+    let high = 0;
+    for (let i = 0; i < n; i++) if (generateSpot(data, rng, { randomShare: 1 }).hand >= 150) high++;
+    let combos = 0;
+    for (let h = 150; h < 169; h++) combos += COMBOS[h].length;
+    expect(Math.abs(high / n - combos / 1326)).toBeLessThan(0.03);
+  });
+
+  it('rejects invalid category weights', () => {
+    const rng = mulberry32(1);
+    const w = (v: number) => new Map([['open|BTN|6-10', v]]);
+    expect(() => generateSpot(data, rng, { categoryWeights: w(Number.NaN) })).toThrow(/gewicht/i);
+    expect(() => generateSpot(data, rng, { categoryWeights: w(-1) })).toThrow(/gewicht/i);
+    const zero = new Map([...['open', 'call'].flatMap((k) => ['UTG', 'UTG1', 'LJ', 'HJ', 'CO', 'BTN', 'SB', 'BB'].flatMap((p) => ['1-5', '6-10', '11-15', '16-20'].map((b) => [`${k}|${p}|${b}`, 0] as const)))]);
+    expect(() => generateSpot(data, rng, { categoryWeights: zero })).toThrow(/gewicht/i);
+  });
+});
+

@@ -4,12 +4,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { HAND_COUNT } from '../src/engine/cards';
-import { parseArgs } from './lib/args';
+import { assertKnownArgs, numberArg, parseArgs } from './lib/args';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = parseArgs(process.argv.slice(2));
-const samples = Number(args.samples ?? 100_000);
-const seed = Number(args.seed ?? 20261013);
+assertKnownArgs(args, ['samples', 'seed']);
+const samples = numberArg(args, 'samples', 100_000, { integer: true, min: 1000 });
+const seed = numberArg(args, 'seed', 20261013, { integer: true });
 const workers = Math.max(1, availableParallelism() - 1);
 
 const pairs: Array<[number, number]> = [];
@@ -49,6 +50,9 @@ await Promise.all(
           }
         });
         worker.on('error', reject);
+        worker.on('exit', (code) => {
+          if (code !== 0) reject(new Error(`Equity-Worker ${w} wurde mit Exit-Code ${code} beendet`));
+        });
       }),
   ),
 );

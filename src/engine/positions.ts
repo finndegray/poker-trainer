@@ -21,10 +21,12 @@ export function blindOf(seat: number): number {
   return 0;
 }
 
-export const OPEN_POSITIONS: readonly Position[] = POSITIONS.slice(0, BB_SEAT);
+export type OpenPosition = Exclude<Position, 'BB'>;
+export const OPEN_POSITIONS = POSITIONS.slice(0, BB_SEAT) as readonly OpenPosition[];
 
 export const callerPositions = (shover: Position): Position[] => POSITIONS.slice(seatOf(shover) + 1);
 
+// The BB ante is dead money posted on top of the effective stack S (S excludes the ante).
 // Both players put in the full stack (blinds included), plus the ante and the other blinds as dead money.
 export function potWhenCalled(stack: number, shoverSeat: number, callerSeat: number): number {
   return 2 * stack + ANTE + (SB_BLIND + BB_BLIND - blindOf(shoverSeat) - blindOf(callerSeat));

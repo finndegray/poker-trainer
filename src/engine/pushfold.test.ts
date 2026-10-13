@@ -19,6 +19,13 @@ describe('evOf', () => {
     expect(() => evOf(data, { kind: 'call', shover: 'BB', position: 'SB', stack: 10, hand: 0 })).toThrow();
     expect(() => evOf(data, { kind: 'call', shover: 'BTN', position: 'CO', stack: 10, hand: 0 })).toThrow();
   });
+
+  it('rejects invalid hand indices', () => {
+    const base = { kind: 'open', position: 'BTN', stack: 10 } as const;
+    for (const hand of [-1, 169, 1.5, Number.NaN]) {
+      expect(() => evOf(data, { ...base, hand })).toThrow(/Hand/);
+    }
+  });
 });
 
 describe('grade', () => {
@@ -42,12 +49,25 @@ describe('grade', () => {
   });
 });
 
+describe('grade evFold', () => {
+  it('is always 0', () => {
+    expect(grade(data, { kind: 'open', position: 'CO', stack: 12, hand: 0 }, 'shove').evFold).toBe(0);
+    expect(grade(data, { kind: 'open', position: 'CO', stack: 12, hand: 168 }, 'fold').evFold).toBe(0);
+  });
+});
+
 describe('chart', () => {
   it('classifies every hand', () => {
     const cells = chart(data, { kind: 'open', position: 'SB', stack: 8 });
     expect(cells).toHaveLength(169);
     expect(cells[0]).toBe('aggressive');
-    expect(cells[84]).toBe('close');
+    expect(cells[84]).toBe('close-fold');
     expect(cells[168]).toBe('fold');
+  });
+
+  it('marks small positive EV as close-aggressive', () => {
+    const cells = chart(data, { kind: 'call', shover: 'BTN', position: 'BB', stack: 8 });
+    expect(cells[84]).toBe('close-aggressive');
+    expect(cells[85]).toBe('close-fold');
   });
 });

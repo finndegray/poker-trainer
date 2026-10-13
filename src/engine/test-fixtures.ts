@@ -7,8 +7,8 @@ export function makeFixture(ev: (hand: number, s: Situation) => number): PushFol
   const data: PushFoldData = {
     version: 1,
     config: { seats: 8, ante: 1, minStack: 1, maxStack: 20, iterations: 0, maxExploitability: 0, maxHandRegret: 0 },
-    openShove: {},
-    callVsShove: {},
+    openShove: {} as PushFoldData['openShove'],
+    callVsShove: {} as PushFoldData['callVsShove'],
   };
   for (const shover of OPEN_POSITIONS) {
     data.openShove[shover] = [];

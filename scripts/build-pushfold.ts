@@ -4,14 +4,15 @@ import { fileURLToPath } from 'node:url';
 import { compatMatrix } from '../src/engine/cards';
 import { OPEN_POSITIONS, callerPositions, seatOf } from '../src/engine/positions';
 import { MAX_STACK, MIN_STACK, callKey, type PushFoldData } from '../src/engine/pushfold-data';
-import { parseArgs } from './lib/args';
+import { assertKnownArgs, numberArg, parseArgs } from './lib/args';
 import { loadEquity } from './lib/equity-data';
 import { solveSpot } from './lib/nash';
 
 const MAX_EXPLOITABILITY = 0.05;
 const MAX_HAND_REGRET = 0.1;
 const args = parseArgs(process.argv.slice(2));
-const iterations = Number(args.iterations ?? 20000);
+assertKnownArgs(args, ['iterations']);
+const iterations = numberArg(args, 'iterations', 20000, { integer: true, min: 1 });
 
 const equity = loadEquity();
 const compat = compatMatrix();
@@ -21,8 +22,8 @@ const round3 = (x: number) => Math.round(x * 1000) / 1000;
 const data: PushFoldData = {
   version: 1,
   config: { seats: 8, ante: 1, minStack: 1, maxStack: 20, iterations, maxExploitability: 0, maxHandRegret: 0 },
-  openShove: {},
-  callVsShove: {},
+  openShove: {} as PushFoldData['openShove'],
+  callVsShove: {} as PushFoldData['callVsShove'],
 };
 
 for (const shover of OPEN_POSITIONS) {

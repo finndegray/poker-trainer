@@ -37,7 +37,11 @@ function situations(kinds: readonly SpotKind[], minStack: number, maxStack: numb
     for (const shover of OPEN_POSITIONS) {
       if (kinds.includes('open')) out.push({ kind: 'open', position: shover, stack });
       if (kinds.includes('call')) {
-        for (const caller of callerPositions(shover)) out.push({ kind: 'call', shover, position: caller, stack });
+        for (const caller of callerPositions(shover)) {
+          // BB facing a shove at 1 BB: calling costs nothing, so there is no decision.
+          if (caller === 'BB' && stack === 1) continue;
+          out.push({ kind: 'call', shover, position: caller, stack });
+        }
       }
     }
   }
@@ -46,7 +50,12 @@ function situations(kinds: readonly SpotKind[], minStack: number, maxStack: numb
 
 function pickWeighted<T>(items: readonly T[], weight: (item: T) => number, rng: Rng): T {
   let total = 0;
-  for (const it of items) total += weight(it);
+  for (const it of items) {
+    const w = weight(it);
+    if (!Number.isFinite(w) || w < 0) throw new Error(`Ungültiges Gewicht: ${w}`);
+    total += w;
+  }
+  if (!Number.isFinite(total) || total <= 0) throw new Error(`Ungültiges Gesamtgewicht: ${total}`);
   let r = rng() * total;
   for (const it of items) {
     r -= weight(it);

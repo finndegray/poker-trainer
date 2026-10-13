@@ -2,7 +2,7 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { aggressiveAction, evOf } from '../engine/pushfold';
-import { emptyState } from '../storage/schema';
+import { type SaveState, emptyState } from '../storage/schema';
 import { App } from './App';
 import { renderWithStore } from './test-utils';
 
@@ -138,5 +138,17 @@ describe('App', () => {
     expect(screen.getByLabelText('Pokertisch')).toBeTruthy();
     expect(screen.getByText(/^Level 1\/8 · 20 BB · Spot 1\/5$/)).toBeTruthy();
     expect(screen.getByLabelText('Leben: 3 von 3')).toBeTruthy();
+  });
+
+  it('celebrates a rank-up', () => {
+    const initial: SaveState = { ...emptyState(), profile: { xp: 495, combo: 0, soundOn: true } };
+    const { store, data } = renderWithStore(<App />, { initial });
+    fireEvent.click(screen.getByRole('button', { name: 'Training starten' }));
+    const spot = store.getSnapshot().current!.spot;
+    fireEvent.keyDown(window, { key: evOf(data, spot) > 0 ? 'a' : 'f' });
+    expect(screen.getByRole('dialog', { name: 'Aufgestiegen!' })).toBeTruthy();
+    expect(screen.getByText('Du bist jetzt Donkey.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter so!' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

@@ -1,16 +1,20 @@
 import { useState } from 'react';
+import { Celebration } from './components/Celebration';
 import { Notices } from './components/Notices';
 import { useGame, useGameStore } from './GameContext';
 import { HomeScreen, type Screen } from './screens/HomeScreen';
 import { PlayScreen } from './screens/PlayScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { StatsScreen } from './screens/StatsScreen';
+import { type SoundPlayer, silentPlayer } from './sound';
+import { useGameSounds } from './useGameSounds';
 
 const now = () => new Date();
 
-export function App({ onApplyUpdate }: { onApplyUpdate?: () => Promise<void> }) {
+export function App({ onApplyUpdate, sound = silentPlayer }: { onApplyUpdate?: () => Promise<void>; sound?: SoundPlayer }) {
   const store = useGameStore();
   const game = useGame();
+  useGameSounds(sound);
   const [screen, setScreen] = useState<Screen>('home');
   const home = () => setScreen('home');
 
@@ -29,6 +33,7 @@ export function App({ onApplyUpdate }: { onApplyUpdate?: () => Promise<void> }) 
       {(screen === 'training' || screen === 'daily' || screen === 'run') && <PlayScreen key={screen} mode={screen} onBack={home} />}
       {screen === 'stats' && <StatsScreen onBack={home} />}
       {screen === 'settings' && <SettingsScreen onBack={home} />}
+      {game.celebration && <Celebration rank={game.celebration} onClose={store.dismissCelebration} />}
     </main>
   );
 }

@@ -1,0 +1,43 @@
+.status-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.status-bar__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.status-bar__rank {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.status-bar__streak {
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.status-bar__meta {
+  font-size: 13px;
+  color: var(--cream-muted);
+}
+
+.xp-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--felt-dark);
+  overflow: hidden;
+}
+
+.xp-bar__fill {
+  height: 100%;
+  background: var(--gold);
+  border-radius: 4px;
+  transition: width 400ms ease;
+}

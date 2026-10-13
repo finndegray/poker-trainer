@@ -1,0 +1,149 @@
+.feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.feedback__verdict {
+  margin: 0;
+  font-size: 22px;
+}
+
+.feedback--correct .feedback__verdict {
+  color: var(--success);
+}
+
+.feedback--close .feedback__verdict {
+  color: var(--gold);
+}
+
+.feedback--wrong .feedback__verdict {
+  color: var(--danger);
+}
+
+.feedback__line {
+  margin: 0;
+}
+
+.feedback__ev {
+  font-variant-numeric: tabular-nums;
+  color: var(--cream-muted);
+}
+
+.feedback__xp {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.feedback__rankup {
+  margin: 4px 0;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-weight: 700;
+  text-align: center;
+}
+
+.feedback__heading {
+  margin: 12px 0 4px;
+  font-size: 15px;
+  color: var(--cream);
+}
+
+.cell--aggressive {
+  background: var(--cell-push-bg);
+  color: var(--cell-push-fg);
+}
+
+.cell--close-aggressive {
+  background: var(--cell-close-push-bg);
+  color: var(--cell-close-push-fg);
+}
+
+.cell--close-fold {
+  background: var(--cell-close-fold-bg);
+  color: var(--cell-close-fold-fg);
+}
+
+.cell--fold {
+  background: var(--cell-fold-bg);
+  color: var(--cell-fold-fg);
+}
+
+.range-chart {
+  margin: 0;
+}
+
+.range-chart__grid {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.range-chart__cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(7px, 2.1vw, 11px);
+  font-weight: 600;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.range-chart__cell--hero {
+  outline: 2px solid #ffffff;
+  outline-offset: -1px;
+  position: relative;
+  z-index: 1;
+}
+
+.range-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--cream-muted);
+}
+
+.range-chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.range-chart__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.position-row__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 4px;
+}
+
+.position-row__item {
+  flex: 1;
+  text-align: center;
+  padding: 8px 2px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.position-row__item--hero {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+
+.position-row__summary {
+  margin: 6px 0 0;
+  font-size: 14px;
+}

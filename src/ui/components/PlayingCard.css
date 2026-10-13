@@ -1,0 +1,46 @@
+.playing-card {
+  width: 54px;
+  height: 76px;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--card-black);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  animation: card-deal 320ms ease-out both;
+}
+
+.playing-card--red {
+  color: var(--card-red);
+}
+
+.playing-card__rank {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.playing-card__suit {
+  font-size: 20px;
+  line-height: 1;
+}
+
+@keyframes card-deal {
+  from {
+    opacity: 0;
+    transform: translateY(-24px) rotateY(90deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotateY(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playing-card {
+    animation: none;
+  }
+}

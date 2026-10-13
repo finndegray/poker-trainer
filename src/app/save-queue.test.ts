@@ -43,6 +43,22 @@ describe('SaveQueue', () => {
     expect(writes).toEqual([2]);
   });
 
+  it('keeps draining when onError itself throws', async () => {
+    const writes: number[] = [];
+    const queue = new SaveQueue<number>(async (v) => {
+      if (v === 1) throw new Error('voll');
+      writes.push(v);
+    }, () => {
+      throw new Error('handler kaputt');
+    });
+    queue.schedule(1);
+    queue.schedule(2);
+    await expect(queue.flush()).resolves.toBeUndefined();
+    queue.schedule(3);
+    await queue.flush();
+    expect(writes).toEqual([2, 3]);
+  });
+
   it('flush resolves immediately when idle', async () => {
     const queue = new SaveQueue<number>(async () => {}, () => {});
     await expect(queue.flush()).resolves.toBeUndefined();

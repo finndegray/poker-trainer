@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, serialize, type SaveState } from '../storage/schema';
 import { SAVE_KEY, loadState, memoryBackend, type KeyValueBackend } from '../storage/store';
 import { acquireWriterLock, installFlushOnHide, openPersistence, type LockLike, type PersistenceEnv } from './persistence';
@@ -23,6 +23,15 @@ describe('acquireWriterLock', () => {
   it('reports whether the lock was available', async () => {
     expect(await acquireWriterLock(lockAvailable)).toBe(true);
     expect(await acquireWriterLock(lockTaken)).toBe(false);
+  });
+
+  it('fails open when locks.request throws synchronously', async () => {
+    const throwing: LockLike = {
+      request: () => {
+        throw new Error('kaputt');
+      },
+    };
+    expect(await acquireWriterLock(throwing)).toBe(true);
   });
 });
 
@@ -79,9 +88,72 @@ describe('openPersistence', () => {
     await openPersistence(env({ storage: { persist } }));
     expect(persist).toHaveBeenCalledOnce();
   });
+
+  it('does not wait for a persist request that never resolves', async () => {
+    const persist = vi.fn(() => new Promise<boolean>(() => {}));
+    const p = await openPersistence(env({ storage: { persist } }));
+    expect(p.initial).toEqual(emptyState());
+  });
+
+  it('survives a persist request that throws synchronously', async () => {
+    const persist = vi.fn((): Promise<boolean> => {
+      throw new Error('nein');
+    });
+    await expect(openPersistence(env({ storage: { persist } }))).resolves.toBeDefined();
+  });
+
+  it('acquires the writer lock before loading the state', async () => {
+    const calls: string[] = [];
+    const inner = memoryBackend();
+    const backend: KeyValueBackend = {
+      ...inner,
+      get: (k) => {
+        calls.push('get');
+        return inner.get(k);
+      },
+    };
+    const locks: LockLike = {
+      request: (_n, _o, cb) => {
+        calls.push('lock');
+        return cb({});
+      },
+    };
+    await openPersistence(env({ createBackend: () => backend, locks }));
+    expect(calls[0]).toBe('lock');
+    expect(calls).toContain('get');
+  });
+
+  it('saves in memory fallback mode without errors', async () => {
+    const broken: KeyValueBackend = {
+      get: () => Promise.reject(new Error('blockiert')),
+      set: () => Promise.reject(new Error('blockiert')),
+      keys: () => Promise.resolve([]),
+      del: () => Promise.resolve(),
+    };
+    const onSaveError = vi.fn();
+    const p = await openPersistence(env({ createBackend: () => broken, locks: lockTaken, onSaveError }));
+    expect(p.info).toMatchObject({ mode: 'memory', otherTabActive: false });
+    p.save(withXp(7));
+    await p.flush();
+    expect(onSaveError).not.toHaveBeenCalled();
+  });
+
+  it('reports save errors when the backend set rejects', async () => {
+    const inner = memoryBackend();
+    const backend: KeyValueBackend = { ...inner, set: () => Promise.reject(new Error('voll')) };
+    const onSaveError = vi.fn();
+    const p = await openPersistence(env({ createBackend: () => backend, locks: lockAvailable, onSaveError }));
+    p.save(withXp(3));
+    await p.flush();
+    expect(onSaveError).toHaveBeenCalled();
+  });
 });
 
 describe('installFlushOnHide', () => {
+  afterEach(() => {
+    delete (document as unknown as Record<string, unknown>).visibilityState;
+  });
+
   it('flushes on pagehide and when the page becomes hidden', () => {
     const flush = vi.fn(() => Promise.resolve());
     const remove = installFlushOnHide({ flush }, document, window);

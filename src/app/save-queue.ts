@@ -24,7 +24,11 @@ export class SaveQueue<T> {
         try {
           await this.write(value);
         } catch (error) {
-          this.onError(error);
+          try {
+            this.onError(error);
+          } catch {
+            // A failing error handler must not stop the queue.
+          }
         }
       }
     } finally {

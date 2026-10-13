@@ -31,38 +31,42 @@ export type PersistenceEnv = {
 export function acquireWriterLock(locks?: LockLike): Promise<boolean> {
   if (!locks) return Promise.resolve(true);
   return new Promise<boolean>((resolve) => {
-    locks
-      .request(WRITER_LOCK, { ifAvailable: true }, (lock) => {
-        if (!lock) {
-          resolve(false);
-          return Promise.resolve();
-        }
-        resolve(true);
-        // Keep the lock until the tab closes.
-        return new Promise<void>(() => {});
-      })
-      .catch(() => resolve(true));
+    try {
+      locks
+        .request(WRITER_LOCK, { ifAvailable: true }, (lock) => {
+          if (!lock) {
+            resolve(false);
+            return Promise.resolve();
+          }
+          resolve(true);
+          // Keep the lock until the tab closes.
+          return new Promise<void>(() => {});
+        })
+        .catch(() => resolve(true));
+    } catch {
+      resolve(true);
+    }
   });
 }
 
-async function loadWithFallback(env: PersistenceEnv): Promise<{ backend: KeyValueBackend; mode: StorageMode; loaded: LoadResult }> {
+async function openBackend(env: PersistenceEnv): Promise<{ backend: KeyValueBackend; mode: StorageMode; loaded: LoadResult; hasLock: boolean }> {
   try {
     const backend = env.createBackend();
-    return { backend, mode: 'indexeddb', loaded: await loadState(backend, env.now()) };
+    // Lock first, so we never work on a state loaded while another tab was still writing.
+    const hasLock = await acquireWriterLock(env.locks);
+    return { backend, mode: 'indexeddb', loaded: await loadState(backend, env.now()), hasLock };
   } catch {
     const backend = memoryBackend();
-    return { backend, mode: 'memory', loaded: await loadState(backend, env.now()) };
+    return { backend, mode: 'memory', loaded: await loadState(backend, env.now()), hasLock: true };
   }
 }
 
 export async function openPersistence(env: PersistenceEnv): Promise<Persistence> {
-  const { backend, mode, loaded } = await loadWithFallback(env);
-  const hasLock = mode === 'memory' ? true : await acquireWriterLock(env.locks);
-  try {
-    await env.storage?.persist?.();
-  } catch {
-    // Persistence is a best-effort request; the app works without it.
-  }
+  const { backend, mode, loaded, hasLock } = await openBackend(env);
+  // Best-effort and never blocks startup; the app works without it.
+  void Promise.resolve()
+    .then(() => env.storage?.persist?.())
+    .catch(() => {});
   const writable = !loaded.readOnly && hasLock;
   const queue = new SaveQueue<SaveState>((state) => saveState(backend, state, { readOnly: !writable }), env.onSaveError);
   return {

@@ -134,3 +134,64 @@ describe('archive store', () => {
     expect(await saves.keys()).toEqual([SAVE_KEY]);
   });
 });
+
+describe('archive write guards', () => {
+  const newer = (r: object) => JSON.stringify({ ...r, reviewSchemaVersion: 2 });
+
+  it('refuses to overwrite a tournament from a newer version', async () => {
+    const backend = memoryReviewBackend({ [tournamentKey(tournament.id)]: newer(tournament) });
+    const before = backend.dump();
+    await expect(writeRecords(backend, [tournament], [handRecord])).rejects.toMatchObject({ code: 'newer-version' });
+    expect(backend.dump()).toEqual(before);
+  });
+
+  it('refuses to overwrite a hand from a newer version', async () => {
+    const backend = memoryReviewBackend({ [handKey(hand.id)]: newer(handRecord) });
+    const before = backend.dump();
+    await expect(writeRecords(backend, [tournament], [handRecord])).rejects.toMatchObject({ code: 'newer-version' });
+    expect(backend.dump()).toEqual(before);
+  });
+
+  it('never overwrites an unreadable tournament', async () => {
+    const backend = memoryReviewBackend({ [tournamentKey(tournament.id)]: 'kaputt' });
+    const before = backend.dump();
+    const error = await writeRecords(backend, [tournament], [handRecord]).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ArchiveFormatError);
+    expect((error as ArchiveFormatError).code).toBe('corrupt');
+    expect((error as ArchiveFormatError).message).toContain('Turnier im Archiv nicht lesbar');
+    expect(backend.dump()).toEqual(before);
+  });
+
+  it('replaces an unreadable hand from the fresh import', async () => {
+    const backend = memoryReviewBackend({ [handKey(hand.id)]: 'kaputt' });
+    await writeRecords(backend, [tournament], [handRecord]);
+    expect(backend.dump()[handKey(hand.id)]).toBe(JSON.stringify(handRecord));
+  });
+
+  it('refuses to remove a tournament whose hand is from a newer version', async () => {
+    const backend = memoryReviewBackend({
+      [tournamentKey(tournament.id)]: JSON.stringify(tournament),
+      [handKey(hand.id)]: newer(handRecord),
+    });
+    const before = backend.dump();
+    await expect(removeTournament(backend, tournament)).rejects.toMatchObject({ code: 'newer-version' });
+    expect(backend.dump()).toEqual(before);
+  });
+
+  it('removes unreadable hands of a tournament on explicit request', async () => {
+    const backend = memoryReviewBackend({
+      [tournamentKey(tournament.id)]: JSON.stringify(tournament),
+      [handKey(hand.id)]: 'kaputt',
+    });
+    await removeTournament(backend, tournament);
+    expect(backend.dump()).toEqual({});
+  });
+
+  it('passes on a failing transaction and changes nothing', async () => {
+    const backend = memoryReviewBackend();
+    const quota = new DOMException('voll', 'QuotaExceededError');
+    const failing = { ...backend, setMany: () => Promise.reject(quota) };
+    await expect(writeRecords(failing, [tournament], [handRecord])).rejects.toBe(quota);
+    expect(backend.dump()).toEqual({});
+  });
+});

@@ -170,7 +170,25 @@ export async function loadHands(backend: ReviewBackend, ids: readonly string[]):
   return { hands, problems };
 }
 
-/** Only what reads back is written (same rule as the save); everything goes into one transaction. */
+const newerVersionError = (what: string) =>
+  new ArchiveFormatError(`${what} stammt aus einer neueren App-Version und wird nicht verändert`, 'newer-version');
+
+/** Throws when an existing value comes from a newer app version; `corruptFatal` also rejects unreadable values. */
+function guardExisting(text: string | undefined, read: (t: string) => unknown, what: string, corruptFatal: boolean): void {
+  if (text === undefined) return;
+  try {
+    read(text);
+  } catch (error) {
+    if (!(error instanceof ArchiveFormatError)) throw error;
+    if (error.code === 'newer-version') throw newerVersionError(what);
+    if (corruptFatal) throw new ArchiveFormatError(`${what} im Archiv nicht lesbar und wird nicht überschrieben`, 'corrupt');
+  }
+}
+
+/**
+ * The only write path. Only what reads back is written (same rule as the save), existing newer-version records and
+ * unreadable tournaments are never overwritten, and everything goes into one transaction.
+ */
 export async function writeRecords(
   backend: ReviewBackend,
   tournaments: readonly TournamentRecord[],
@@ -187,11 +205,24 @@ export async function writeRecords(
     readTournament(text);
     entries.push([tournamentKey(t.id), text]);
   }
-  if (entries.length > 0) await backend.setMany(entries);
+  if (entries.length === 0) return;
+  const existing = await backend.getMany(entries.map(([k]) => k));
+  existing.forEach((text, i) => {
+    const isTournament = entries[i][0].startsWith(TOURNAMENT_PREFIX);
+    guardExisting(text, isTournament ? readTournament : readHand, isTournament ? 'Turnier' : 'Hand', isTournament);
+  });
+  await backend.setMany(entries);
 }
 
+/** Deletes nothing when the tournament or one of its hands comes from a newer app version; unreadable hands may go. */
 export async function removeTournament(backend: ReviewBackend, tournament: TournamentRecord): Promise<void> {
-  await backend.delMany([...tournament.handIds.map(handKey), tournamentKey(tournament.id)]);
+  const keysToDelete = [...tournament.handIds.map(handKey), tournamentKey(tournament.id)];
+  const texts = await backend.getMany(keysToDelete);
+  texts.forEach((text, i) => {
+    const isTournament = i === keysToDelete.length - 1;
+    guardExisting(text, isTournament ? readTournament : readHand, isTournament ? 'Turnier' : 'Hand', false);
+  });
+  await backend.delMany(keysToDelete);
 }
 
 export function memoryReviewBackend(initial: Record<string, string> = {}): ReviewBackend & { dump(): Record<string, string> } {

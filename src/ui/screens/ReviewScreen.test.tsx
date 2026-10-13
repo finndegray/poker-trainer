@@ -1,0 +1,187 @@
+// @vitest-environment jsdom
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import bounty from '../../review/fixtures/bounty.txt?raw';
+import dailyClassic from '../../review/fixtures/daily-classic.txt?raw';
+import steps from '../../review/fixtures/step-satellites.txt?raw';
+import { renderWithStore } from '../test-utils';
+import { ReviewScreen } from './ReviewScreen';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+const now = () => new Date(2026, 9, 13, 18, 0);
+
+async function withHands(text = dailyClassic) {
+  const utils = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />);
+  await act(async () => {
+    await utils.loaded;
+    await utils.review.importText(text);
+  });
+  return utils;
+}
+
+async function openTournament(name: string, index = 0) {
+  fireEvent.click(screen.getAllByRole('button', { name })[index]);
+  await screen.findByRole('heading', { name });
+}
+
+describe('ReviewScreen overview and import', () => {
+  it('starts empty and imports pasted hands with a balance', async () => {
+    renderWithStore(<ReviewScreen onBack={() => {}} now={now} />);
+    expect(await screen.findByText('Noch keine Hände importiert.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Hände importieren' }));
+    fireEvent.change(screen.getByLabelText('Hände einfügen'), { target: { value: `${dailyClassic}\n\nkein Pokertext` } });
+    fireEvent.click(screen.getByRole('button', { name: 'Eingefügte Hände importieren' }));
+    const balance = await screen.findByRole('region', { name: 'Bilanz' });
+    expect(within(balance).getByText('Importiert: 6 · Schon vorhanden: 0 · Übersprungen: 0')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Zur Übersicht' }));
+    const row = screen.getByRole('row', { name: /Daily Classic \$1/ });
+    expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual(['13.10.2026', 'Normal', '6', '3', '–', '50']);
+    expect(screen.getByRole('img', { name: 'Fehler pro 100 Hände der letzten 8 Wochen' })).toBeTruthy();
+  });
+
+  it('imports files and lists skipped files with their reason', async () => {
+    const { loaded } = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />);
+    await act(() => loaded);
+    fireEvent.click(screen.getByRole('button', { name: 'Hände importieren' }));
+    const files = [new File([bounty], 'bounty.txt', { type: 'text/plain' }), new File(['x'], 'bild.png')];
+    fireEvent.change(screen.getByLabelText('Hand-Historien'), { target: { files } });
+    expect(await screen.findByText('Importiert: 1 · Schon vorhanden: 0 · Übersprungen: 1')).toBeTruthy();
+    expect(screen.getByText('Dateityp nicht unterstützt (nur .txt und .zip): 1')).toBeTruthy();
+  });
+
+  it('accepts files dropped onto the drop zone', async () => {
+    const { loaded } = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />);
+    await act(() => loaded);
+    fireEvent.click(screen.getByRole('button', { name: 'Hände importieren' }));
+    const zone = screen.getByText(/Am PC auch per Drag & Drop/).parentElement!;
+    fireEvent.dragOver(zone);
+    expect(zone.className).toContain('review-drop--active');
+    fireEvent.drop(zone, { dataTransfer: { files: [new File([bounty], 'bounty.txt')] } });
+    expect(await screen.findByText('Importiert: 1 · Schon vorhanden: 0 · Übersprungen: 0')).toBeTruthy();
+  });
+
+  it('blocks the import in read-only mode but still shows the archive', async () => {
+    const { loaded } = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />, { info: { readOnly: true } });
+    await act(() => loaded);
+    expect((screen.getByRole('button', { name: 'Hände importieren' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Nur-Lesen-Modus: Bitte die App aktualisieren, um Hände zu importieren.')).toBeTruthy();
+  });
+
+  it('reports unreadable archive entries', async () => {
+    const { memoryReviewBackend } = await import('../../review/archive');
+    const { loaded } = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />, {
+      reviewBackend: memoryReviewBackend({ 'tournament:1': 'kaputt' }),
+    });
+    await act(() => loaded);
+    expect(screen.getByRole('alert').textContent).toBe('1 Eintrag im Hand-Archiv ist nicht lesbar und wurde übersprungen (nicht gelöscht).');
+  });
+
+  it('shows per-tournament write refusals and renders skip reasons as plain text', async () => {
+    const { loaded, review } = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />);
+    await act(() => loaded);
+    vi.spyOn(review, 'importText').mockResolvedValue({
+      imported: 0,
+      duplicates: 0,
+      skipped: [{ reason: '<b>fett</b>', count: 1 }],
+      tournaments: 0,
+      failures: ['Turnier „X“ konnte nicht gespeichert werden'],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Hände importieren' }));
+    fireEvent.change(screen.getByLabelText('Hände einfügen'), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Eingefügte Hände importieren' }));
+    expect(await screen.findByText('Turnier „X“ konnte nicht gespeichert werden')).toBeTruthy();
+    expect(screen.getByText('<b>fett</b>: 1')).toBeTruthy();
+  });
+});
+
+describe('ReviewScreen tournament', () => {
+  it('lists the hands worst first and filters them', async () => {
+    await withHands();
+    await openTournament('Daily Classic $1');
+    const hands = () => screen.getAllByRole('button', { name: /^\d\d:\d\d/ }).map((b) => b.textContent);
+    expect(hands()).toEqual([
+      '13:15K6o · BTNFehler',
+      '13:3673s · BBFehler',
+      '15:10A4o · HJFehler',
+      '13:0964o · UTG+1Richtig',
+      '15:46AQs · CORichtig',
+      '13:3654s · UTGNicht bewertet',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Nur Fehler' }));
+    expect(hands()).toHaveLength(3);
+  });
+
+  it('changes the kind: errors become hints and are not counted', async () => {
+    await withHands();
+    await openTournament('Daily Classic $1');
+    fireEvent.change(screen.getByLabelText('Art des Turniers'), { target: { value: 'satellit' } });
+    await waitFor(() => expect(screen.getAllByText('Hinweis')).toHaveLength(3));
+    expect(screen.getByText(/· 0 Fehler ·/)).toBeTruthy();
+  });
+
+  it('deletes a tournament after confirmation', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { review } = await withHands(bounty);
+    await openTournament('Bounty Hunters $2.50');
+    fireEvent.click(screen.getByRole('button', { name: 'Turnier löschen' }));
+    expect(await screen.findByText('Noch keine Hände importiert.')).toBeTruthy();
+    expect(review.getSnapshot().tournaments).toEqual([]);
+  });
+});
+
+describe('ReviewScreen hand view', () => {
+  it('shows the first decision with the chart verdict next to the replay table', async () => {
+    await withHands();
+    await openTournament('Daily Classic $1');
+    fireEvent.click(screen.getByRole('button', { name: /K6o · BTN/ }));
+    expect(screen.getByLabelText('Pokertisch')).toBeTruthy();
+    expect(screen.getByText('Du bist dran – deine Wahl: Raise auf 3 BB')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Falsch' })).toBeTruthy();
+    expect(screen.getByText('Standard-Chart, kein Solver-Ergebnis')).toBeTruthy();
+    expect(screen.getByText('Chart für 100 BB · 92 BB effektiv')).toBeTruthy();
+    expect(screen.getByText('Preflop · Pot 2,5 BB · zu callen 1 BB · Stack 92 BB')).toBeTruthy();
+  });
+
+  it('rates push/fold spots with the push/fold chart', async () => {
+    await withHands();
+    await openTournament('Daily Classic $1');
+    fireEvent.click(screen.getByRole('button', { name: /A4o · HJ/ }));
+    expect(screen.getByText('Push/Fold-Daten · 16,4 BB effektiv')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'A4o bei 16 BB – Range für diesen Spot' })).toBeTruthy();
+  });
+
+  it('steps through the hand and jumps between decisions with ← and →', async () => {
+    await withHands(bounty);
+    await openTournament('Bounty Hunters $2.50');
+    fireEvent.click(screen.getByRole('button', { name: /66 · UTG/ }));
+    expect(screen.getByRole('heading', { name: 'Richtig' })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(screen.getByText('Du bist dran – deine Wahl: Bet 4,4 BB')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Nicht bewertet' })).toBeTruthy();
+    expect(screen.getByText('Postflop-Bewertung folgt')).toBeTruthy();
+    expect(screen.getByLabelText('Board')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Schritt vor' }));
+    expect(screen.getByText('CO: Call 4,4 BB')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.getByText('Du bist dran – deine Wahl: Bet 4,4 BB')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.getByText('Du bist dran – deine Wahl: Raise auf 3 BB')).toBeTruthy();
+    expect((screen.getByRole('button', { name: '← Entscheidung' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '← Turnier' }));
+    expect(screen.getByRole('heading', { name: 'Bounty Hunters $2.50' })).toBeTruthy();
+  });
+
+  it('shows the satellite hint instead of "Falsch"', async () => {
+    await withHands(steps);
+    // Two Step tournaments with the same name; the older one (second row) holds the KJo hand.
+    await openTournament('$0.50 Step to The Weekender', 1);
+    fireEvent.click(screen.getByRole('button', { name: /KJo · SB/ }));
+    expect(screen.getByRole('heading', { name: 'Hinweis' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Falsch' })).toBeNull();
+    expect(screen.getByText('Satellit/Bounty – Standard-Chart nur bedingt gültig')).toBeTruthy();
+    expect(screen.getByText('Näherung: Chart für 40 BB · 25,4 BB effektiv')).toBeTruthy();
+  });
+});

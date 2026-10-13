@@ -184,4 +184,14 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(main.hasAttribute('inert')).toBe(false);
   });
+
+  it('opens the hand review from its tile, also in read-only mode', async () => {
+    renderWithStore(<App />, { info: { readOnly: true } });
+    const button = screen.getByRole('button', { name: 'Hände prüfen' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(await screen.findByText('Nur-Lesen-Modus: Bitte die App aktualisieren, um Hände zu importieren.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '← Menü' }));
+    expect(screen.getByRole('button', { name: 'Hände prüfen' })).toBeTruthy();
+  });
 });

@@ -1,0 +1,139 @@
+.review-intro,
+.review-import,
+.review-tournament,
+.review-progress,
+.review-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-intro p,
+.review-import p,
+.review-tournament p,
+.review-progress p,
+.review-balance p {
+  margin: 0;
+}
+
+.review-title {
+  margin: 0;
+  font-size: 18px;
+  color: var(--gold);
+}
+
+.review-file {
+  display: none;
+}
+
+.review-drop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 2px dashed var(--rule);
+  border-radius: var(--radius);
+}
+
+.review-drop--active {
+  border-color: var(--gold);
+}
+
+.review-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-paste textarea {
+  width: 100%;
+  min-height: 120px;
+  font: 13px/1.4 ui-monospace, monospace;
+  background: var(--felt-dark);
+  color: var(--cream);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.review-progress progress {
+  width: 100%;
+  accent-color: var(--gold);
+}
+
+.review-balance__reasons {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.review-table-wrap {
+  overflow-x: auto;
+}
+
+.review-table__open {
+  text-align: left;
+  padding: 0;
+  min-height: 0;
+}
+
+.review-kind {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-kind select {
+  min-height: 44px;
+  background: var(--felt-dark);
+  color: var(--cream);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0 8px;
+}
+
+.review-hands {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-hand {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 4em 1fr auto;
+  gap: 8px;
+  text-align: left;
+}
+
+.review-hand--error .review-hand__outcome {
+  color: var(--danger);
+}
+
+.review-hand--hint .review-hand__outcome,
+.review-hand--close .review-hand__outcome {
+  color: var(--gold);
+}
+
+.review-hand--correct .review-hand__outcome {
+  color: var(--success);
+}
+
+.review-hand-head {
+  margin: 0;
+}
+
+.review-steps {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+@media (min-width: 600px) {
+  .review-steps {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

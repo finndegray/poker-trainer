@@ -16,6 +16,7 @@ import type { Persistence, PersistenceInfo } from './persistence';
 
 export type TrainingSpot = { spot: Spot; cards: readonly [Card, Card]; shownAt: number };
 export type AnswerResult = { outcome: DecisionOutcome; comparison: PositionComparison; chart: ChartCell[] };
+export type Notice = 'writer-acquired' | 'update-available';
 export type GameSnapshot = {
   save: SaveState;
   status: SessionStatus;
@@ -23,6 +24,7 @@ export type GameSnapshot = {
   current: TrainingSpot | null;
   last: AnswerResult | null;
   saveError: string | null;
+  notice: Notice | null;
 };
 export type GameStoreDeps = {
   data: PushFoldData;
@@ -35,10 +37,16 @@ export type GameStore = {
   getSnapshot(): GameSnapshot;
   subscribe(listener: () => void): () => void;
   nextTrainingSpot(): void;
+  /** Re-entering training: keeps an unanswered spot (restarting its timer), otherwise deals a new one. */
+  resumeTraining(): void;
   answer(action: Action): AnswerResult;
   setSound(on: boolean): void;
   reportSaveError(error: unknown): void;
   refreshStatus(): void;
+  /** Takes over the state another tab left behind, once this tab became the writer. */
+  adoptSavedState(fresh: SaveState): void;
+  setUpdateAvailable(): void;
+  dismissNotice(): void;
 };
 
 export function createGameStore(deps: GameStoreDeps): GameStore {
@@ -50,7 +58,10 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
     current: null,
     last: null,
     saveError: null,
+    notice: null,
   };
+  // Remembered separately, so the update notice comes back after the writer notice is dismissed.
+  let updateAvailable = false;
   const listeners = new Set<() => void>();
 
   const update = (patch: Partial<GameSnapshot>) => {
@@ -62,7 +73,7 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
     update({ ...patch, save, status: statusOf(save, now()) });
   };
 
-  return {
+  const store: GameStore = {
     getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener);
@@ -74,6 +85,11 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
       if (snapshot.info.readOnly) throw new Error('Training ist im Nur-Lesen-Modus nicht möglich');
       const spot = nextTrainingSpot(data, snapshot.save, rng);
       update({ current: { spot, cards: dealConcrete(spot.hand, rng), shownAt: clock() }, last: null });
+    },
+    resumeTraining() {
+      const current = snapshot.current;
+      if (!current || snapshot.last) store.nextTrainingSpot();
+      else update({ current: { ...current, shownAt: clock() } });
     },
     answer(action) {
       const current = snapshot.current;
@@ -103,5 +119,23 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
     refreshStatus() {
       update({ status: statusOf(snapshot.save, now()) });
     },
+    adoptSavedState(fresh) {
+      update({
+        save: fresh,
+        status: statusOf(fresh, now()),
+        info: { ...snapshot.info, otherTabActive: false },
+        current: null,
+        last: null,
+        notice: 'writer-acquired',
+      });
+    },
+    setUpdateAvailable() {
+      updateAvailable = true;
+      if (snapshot.notice === null) update({ notice: 'update-available' });
+    },
+    dismissNotice() {
+      update({ notice: snapshot.notice === 'writer-acquired' && updateAvailable ? 'update-available' : null });
+    },
   };
+  return store;
 }

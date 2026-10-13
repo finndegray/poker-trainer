@@ -79,3 +79,81 @@ describe('createGameStore', () => {
     expect(store.getSnapshot().saveError).toBe('Speicher voll');
   });
 });
+
+describe('adoptSavedState', () => {
+  it('takes over the fresh state, clears the spot and shows a notice', () => {
+    const { store } = setup({ otherTabActive: true });
+    expect(store.getSnapshot().notice).toBeNull();
+    store.nextTrainingSpot();
+    store.answer('fold');
+    const fresh = { ...emptyState(), profile: { xp: 1250, combo: 0, soundOn: true } };
+    store.adoptSavedState(fresh);
+    const s = store.getSnapshot();
+    expect(s.save).toBe(fresh);
+    expect(s.status.rank.name).toBe('Donkey');
+    expect(s.info.otherTabActive).toBe(false);
+    expect(s.current).toBeNull();
+    expect(s.last).toBeNull();
+    expect(s.notice).toBe('writer-acquired');
+    store.dismissNotice();
+    expect(store.getSnapshot().notice).toBeNull();
+  });
+});
+
+describe('notices', () => {
+  it('shows the update notice', () => {
+    const { store } = setup();
+    store.setUpdateAvailable();
+    expect(store.getSnapshot().notice).toBe('update-available');
+  });
+
+  it('keeps the writer notice in front until it is dismissed', () => {
+    const { store } = setup({ otherTabActive: true });
+    store.adoptSavedState(emptyState());
+    store.setUpdateAvailable();
+    expect(store.getSnapshot().notice).toBe('writer-acquired');
+    store.dismissNotice();
+    expect(store.getSnapshot().notice).toBe('update-available');
+  });
+
+  it('puts the writer notice in front of a shown update notice', () => {
+    const { store } = setup({ otherTabActive: true });
+    store.setUpdateAvailable();
+    store.adoptSavedState(emptyState());
+    expect(store.getSnapshot().notice).toBe('writer-acquired');
+    store.dismissNotice();
+    expect(store.getSnapshot().notice).toBe('update-available');
+  });
+});
+
+describe('resumeTraining', () => {
+  it('deals a spot when there is none', () => {
+    const { store } = setup();
+    store.resumeTraining();
+    expect(store.getSnapshot().current?.shownAt).toBe(1000);
+  });
+
+  it('keeps an unanswered spot and restarts its timer', () => {
+    const { store, advance } = setup();
+    store.nextTrainingSpot();
+    const before = store.getSnapshot().current!;
+    advance(5000);
+    store.resumeTraining();
+    const after = store.getSnapshot().current!;
+    expect(after.spot).toBe(before.spot);
+    expect(after.cards).toBe(before.cards);
+    expect(after.shownAt).toBe(6000);
+    advance(800);
+    expect(store.answer('fold').outcome.record.responseMs).toBe(800);
+  });
+
+  it('deals a new spot when the current one is answered', () => {
+    const { store, advance } = setup();
+    store.nextTrainingSpot();
+    store.answer('fold');
+    advance(10);
+    store.resumeTraining();
+    expect(store.getSnapshot().last).toBeNull();
+    expect(store.getSnapshot().current?.shownAt).toBe(1010);
+  });
+});

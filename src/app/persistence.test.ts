@@ -166,3 +166,70 @@ describe('installFlushOnHide', () => {
     expect(flush).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('writer lock hand-over', () => {
+  function waitingLock() {
+    const waiting: Array<(lock: unknown) => Promise<void>> = [];
+    const locks: LockLike = {
+      request: (_n, options, cb) => {
+        if (options.ifAvailable) return cb(null);
+        waiting.push(cb);
+        return new Promise(() => {});
+      },
+    };
+    return { locks, grant: () => void waiting.shift()?.({}), waiting };
+  }
+
+  it('waits for the lock, reloads the state and starts writing once it is granted', async () => {
+    const backend = memoryBackend({ [SAVE_KEY]: serialize(withXp(10)) });
+    const { locks, grant, waiting } = waitingLock();
+    const p = await openPersistence(env({ createBackend: () => backend, locks }));
+    expect(p.info.otherTabActive).toBe(true);
+    expect(waiting).toHaveLength(1);
+    p.save(withXp(11));
+    await p.flush();
+    // The other tab saves its newer state before closing.
+    await backend.set(SAVE_KEY, serialize(withXp(25)));
+    const fresh = await new Promise<SaveState>((resolve) => {
+      p.onWriterAcquired(resolve);
+      grant();
+    });
+    expect(fresh.profile.xp).toBe(25);
+    p.save(withXp(30));
+    await p.flush();
+    expect((await loadState(backend, now())).state.profile.xp).toBe(30);
+  });
+
+  it('lets listeners unsubscribe', async () => {
+    const { locks, grant } = waitingLock();
+    const p = await openPersistence(env({ locks }));
+    const listener = vi.fn();
+    p.onWriterAcquired(listener)();
+    const other = new Promise<void>((resolve) => p.onWriterAcquired(() => resolve()));
+    grant();
+    await other;
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('does not queue a waiting request when the lock was free', async () => {
+    const request = vi.fn<LockLike['request']>((_n, _o, cb) => cb({}));
+    await openPersistence(env({ locks: { request } }));
+    expect(request).toHaveBeenCalledOnce();
+  });
+});
+
+describe('load timeout', () => {
+  it('falls back to memory when loading never finishes', async () => {
+    const hanging: KeyValueBackend = {
+      get: () => new Promise(() => {}),
+      set: () => new Promise(() => {}),
+      keys: () => new Promise(() => {}),
+      del: () => new Promise(() => {}),
+    };
+    const p = await openPersistence(env({ createBackend: () => hanging, locks: lockAvailable, loadTimeoutMs: 20 }));
+    expect(p.info.mode).toBe('memory');
+    expect(p.initial).toEqual(emptyState());
+    p.save(withXp(2));
+    await p.flush();
+  });
+});

@@ -5,6 +5,7 @@ import { PreflopActionBar } from '../components/ActionBar';
 import { PreflopTable } from '../components/PokerTable';
 import { PreflopFeedbackPanel } from '../components/PreflopFeedbackPanel';
 import { StatusBar } from '../components/StatusBar';
+import { TrainingLayout } from '../components/TrainingLayout';
 import { useGame, useGameStore } from '../GameContext';
 import './screens.css';
 
@@ -98,11 +99,15 @@ export function PreflopScreen({ onBack }: { onBack: () => void }) {
         <FilterGroup label="Stack" options={STACK_OPTIONS} value={filter.stack} disabled={locked} onChange={(stack) => setFilter({ stack })} />
       </details>
       {current && (
-        <>
-          <PreflopTable key={current.shownAt} spot={current.spot} cards={current.cards} />
-          <PreflopActionBar spot={current.spot} answered={game.preflopLast !== null} onAction={onAction} onNext={onNext} />
-          {game.preflopLast && <PreflopFeedbackPanel result={game.preflopLast} />}
-        </>
+        <TrainingLayout
+          main={
+            <>
+              <PreflopTable key={current.shownAt} spot={current.spot} cards={current.cards} />
+              <PreflopActionBar spot={current.spot} answered={game.preflopLast !== null} onAction={onAction} onNext={onNext} />
+            </>
+          }
+          side={game.preflopLast && <PreflopFeedbackPanel result={game.preflopLast} />}
+        />
       )}
     </>
   );

@@ -103,44 +103,46 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
   return (
     <>
       {header}
-      <section className="stats-block" aria-label="Push/Fold">
-        <h2 className="stats-heading">Push/Fold</h2>
-        {pushFold.length > 0 ? (
-          <PushFoldStats records={pushFold} />
-        ) : (
-          <p className="panel muted">Noch keine Push/Fold-Entscheidungen.</p>
-        )}
-      </section>
-      <PreflopStats records={preflop} />
-      <section className="panel stats-section">
-        <h3 className="stats-section__title">Endphase-Run</h3>
-        {game.save.bestRun ? (
-          <p>Beste Platzierung: Platz {formatCount(game.save.bestRun.placement)}</p>
-        ) : (
-          <p className="muted">Noch kein Run gespielt</p>
-        )}
-        <ul className="stats-list">
-          {recentRuns.map((r) => (
-            <li key={r.ts}>
-              {shortDate(r.dateKey)}: Platz {formatCount(r.placement)}
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section className="panel stats-section">
-        <h3 className="stats-section__title">Daily Challenge</h3>
-        {recentDailies.length === 0 ? (
-          <p className="muted">Noch keine Daily gespielt</p>
-        ) : (
+      <div className="stats-columns">
+        <section className="stats-block" aria-label="Push/Fold">
+          <h2 className="stats-heading">Push/Fold</h2>
+          {pushFold.length > 0 ? (
+            <PushFoldStats records={pushFold} />
+          ) : (
+            <p className="panel muted">Noch keine Push/Fold-Entscheidungen.</p>
+          )}
+        </section>
+        <PreflopStats records={preflop} />
+        <section className="panel stats-section">
+          <h3 className="stats-section__title">Endphase-Run</h3>
+          {game.save.bestRun ? (
+            <p>Beste Platzierung: Platz {formatCount(game.save.bestRun.placement)}</p>
+          ) : (
+            <p className="muted">Noch kein Run gespielt</p>
+          )}
           <ul className="stats-list">
-            {recentDailies.map((d) => (
-              <li key={d.dateKey}>
-                {shortDate(d.dateKey)}: {d.correct}/{d.total}
+            {recentRuns.map((r) => (
+              <li key={r.ts}>
+                {shortDate(r.dateKey)}: Platz {formatCount(r.placement)}
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+        <section className="panel stats-section">
+          <h3 className="stats-section__title">Daily Challenge</h3>
+          {recentDailies.length === 0 ? (
+            <p className="muted">Noch keine Daily gespielt</p>
+          ) : (
+            <ul className="stats-list">
+              {recentDailies.map((d) => (
+                <li key={d.dateKey}>
+                  {shortDate(d.dateKey)}: {d.correct}/{d.total}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </>
   );
 }

@@ -59,7 +59,10 @@ Damit 7 + 18 + 12 = 37 Charts je Stack, 74 insgesamt.
 - Hauptaktion = aggressiv, wenn die Hand in `aggressive` steht, sonst Call, wenn in `call`, sonst Fold.
 - Verdict: `correct` bei der Hauptaktion; `close` bei der Grenzhand-Alternative (zählt als richtig); sonst `wrong`.
 - Spot-Generator: Kategorie (Spot-Typ × Held-Position × Stack) gewichtet nach Fehlerquote wie bei Push/Fold; Hand gewichtet: Grenzhände und Hände, deren Nachbarzellen im Chart eine andere Aktion haben, deutlich häufiger; 15 % gleichverteilt. Filter nach Spot-Typ und Stack.
-- Positions-Vergleich: dieselbe Hand im selben Spot-Typ und Stack aus allen anderen gültigen Held-Positionen (bei `vsOpen` gegen denselben Opener, bei `vs3bet` gegen dieselbe 3-Bettor-Gruppe), mit deutscher Zusammenfassung wie beim Push/Fold.
+- Positions-Vergleich mit deutscher Zusammenfassung wie beim Push/Fold:
+  - `rfi`: dieselbe Hand aus allen Positionen UTG bis SB.
+  - `vsOpen`: dieselbe Hand bei fester Held-Gruppe (in Position, SB, BB) gegen Opens aus allen möglichen Positionen – so wird sichtbar, ab welchem Opener eine Hand spielbar wird.
+  - `vs3bet`: dieselbe Hand bei fester 3-Bettor-Gruppe (in Position bzw. aus den Blinds) aus allen eigenen Open-Positionen.
 
 ## 7. Einbindung (Plan 6)
 

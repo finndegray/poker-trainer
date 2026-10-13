@@ -1,5 +1,5 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { formatCount } from '../../app/format';
+import { formatCount, formatHands } from '../../app/format';
 import { localDateKey } from '../../game/streak';
 import { type ArchiveExport, readArchivePart, withArchive } from '../../review/export';
 import { BACKUP_PREFIX } from '../../storage/store';
@@ -46,15 +46,22 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
     refresh().catch(() => setMessage('Sicherungen konnten nicht geladen werden.'));
   }, [refresh]);
 
-  // Without archived hands the export is exactly the save, as before (and written right away).
+  // Without archived hands (and nothing unreadable) the export is exactly the save, as before (and written right away).
   const exportNow = async () => {
     const name = `poker-trainer-spielstand-${localDateKey(new Date())}.json`;
-    if (review.tournaments.length === 0) {
+    if (review.status === 'loading') return;
+    if (review.tournaments.length === 0 && review.problems.length === 0) {
       downloadText(name, store.exportState());
+      if (review.status === 'failed') setMessage('Export erstellt. Das Hand-Archiv konnte nicht geladen werden und fehlt darin.');
       return;
     }
     try {
-      downloadText(name, withArchive(store.exportState(), await reviewStore.exportPart()));
+      const { part, omitted } = await reviewStore.exportPart();
+      downloadText(name, withArchive(store.exportState(), part));
+      if (omitted > 0) {
+        const what = omitted === 1 ? '1 unlesbarer Archiv-Eintrag' : `${formatCount(omitted)} unlesbare Archiv-Einträge`;
+        setMessage(`Export erstellt (${what} nicht exportiert).`);
+      }
     } catch (error) {
       setMessage(`Export fehlgeschlagen: ${errorText(error)}`);
     }
@@ -79,7 +86,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
     if (part) {
       try {
         const merged = await reviewStore.mergeExport(part);
-        done = `Spielstand importiert. Hand-Archiv: ${formatCount(merged.imported)} Hände ergänzt, ${formatCount(merged.duplicates)} schon vorhanden.${merged.failures?.length ? ` ${merged.failures.join(' ')}` : ''}`;
+        done = `Spielstand importiert. Hand-Archiv: ${formatHands(merged.imported)} ergänzt, ${formatCount(merged.duplicates)} schon vorhanden.${merged.failures?.length ? ` ${merged.failures.join(' ')}` : ''}`;
       } catch (error) {
         done = `Spielstand importiert. Hand-Archiv nicht übernommen: ${errorText(error)}`;
       }
@@ -143,7 +150,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
           Exportiere deinen Spielstand und dein Hand-Archiv als Datei, um sie zu sichern oder auf ein anderes Gerät zu übertragen.
         </p>
         <div className="settings-buttons">
-          <button type="button" className="btn" onClick={() => void exportNow()}>
+          <button type="button" className="btn" disabled={review.status === 'loading'} onClick={() => void exportNow()}>
             Exportieren
           </button>
           <button type="button" className="btn" disabled={!canWrite} onClick={() => fileInput.current?.click()}>

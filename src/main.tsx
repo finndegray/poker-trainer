@@ -76,7 +76,7 @@ async function bootstrap(): Promise<void> {
   void review.load();
   opened.onWriterAcquired((fresh) => {
     ready.adoptSavedState(fresh);
-    review.refreshAccess();
+    review.refreshAccess().catch(logError);
   });
   document.addEventListener('visibilitychange', () => {
     const visible = document.visibilityState === 'visible';

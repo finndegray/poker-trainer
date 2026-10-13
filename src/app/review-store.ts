@@ -59,15 +59,15 @@ export type ReviewStore = {
   getSnapshot(): ReviewSnapshot;
   subscribe(listener: () => void): () => void;
   load(): Promise<void>;
-  /** Re-checks the writer lock, e.g. after this tab became the writer. */
-  refreshAccess(): void;
+  /** Re-checks the writer lock and reloads the archive index, e.g. after this tab became the writer (other tabs may have written meanwhile). */
+  refreshAccess(): Promise<void>;
   importFiles(files: readonly ImportFile[]): Promise<ImportSummary>;
   importText(text: string): Promise<ImportSummary>;
   openTournament(id: string): Promise<OpenTournament>;
   setKind(id: string, kind: TournamentKind): Promise<void>;
   deleteTournament(id: string): Promise<void>;
-  /** The archive part of a manual export; null when the archive is empty. */
-  exportPart(): Promise<ArchiveExport | null>;
+  /** The archive part of a manual export (null when the archive is empty) and the number of unreadable entries left out of it. */
+  exportPart(): Promise<{ part: ArchiveExport | null; omitted: number }>;
   /** Merges the archive part of an export file (hand numbers decide about duplicates). */
   mergeExport(part: ArchiveExport): Promise<ImportSummary>;
 };
@@ -75,6 +75,7 @@ export type ReviewStore = {
 export const LOCK_READ_ONLY = 'Nur-Lesen-Modus: Bitte die App aktualisieren, um Hände zu importieren.';
 export const LOCK_NEWER_ARCHIVE = 'Das Hand-Archiv stammt aus einer neueren Version – bitte die App aktualisieren.';
 export const LOCK_OTHER_TAB = 'Import ist nur in dem Tab möglich, der deinen Fortschritt speichert.';
+export const BLOCKED_DURING_IMPORT = 'Während eines Imports nicht möglich.';
 export const LOCK_FAILED = 'Das Hand-Archiv konnte nicht geladen werden.';
 
 const byNewest = (a: TournamentRecord, b: TournamentRecord) => b.lastPlayedAt.localeCompare(a.lastPlayedAt) || a.id.localeCompare(b.id);
@@ -227,8 +228,10 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
         update({ status: 'failed' });
       }
     },
-    refreshAccess() {
+    async refreshAccess() {
       update({});
+      // Another tab may have written while this one only read; never build records from a stale index.
+      await store.load();
     },
     importFiles(files) {
       const { texts, skipped } = extractTexts(files);
@@ -254,6 +257,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
     },
     async setKind(id, kind) {
       assertWritable();
+      if (snapshot.progress) throw new Error(BLOCKED_DURING_IMPORT);
       const tournament = snapshot.tournaments.find((t) => t.id === id);
       if (!tournament) throw new Error('Turnier nicht gefunden');
       const loaded = await loadTournamentHands(tournament);
@@ -263,20 +267,23 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
     },
     async deleteTournament(id) {
       assertWritable();
+      if (snapshot.progress) throw new Error(BLOCKED_DURING_IMPORT);
       const tournament = snapshot.tournaments.find((t) => t.id === id);
       if (!tournament) return;
       await serial(() => removeTournament(backend, tournament));
       update({ tournaments: snapshot.tournaments.filter((t) => t.id !== id) });
     },
     async exportPart() {
-      if (snapshot.tournaments.length === 0) return null;
+      let omitted = snapshot.problems.length;
+      if (snapshot.tournaments.length === 0) return { part: null, omitted };
       const part: ArchiveExport = { reviewSchemaVersion: REVIEW_SCHEMA_VERSION, tournaments: [], hands: [] };
       for (const t of snapshot.tournaments) {
         part.tournaments.push({ id: t.id, name: t.name, kind: t.kind });
-        const { hands } = await loadHands(backend, t.handIds);
+        const { hands, problems } = await loadHands(backend, t.handIds);
+        omitted += problems.length;
         for (const h of hands) part.hands.push({ id: h.id, tournamentId: h.tournamentId, raw: h.raw });
       }
-      return part;
+      return { part, omitted };
     },
     mergeExport(part) {
       const kinds = new Map(part.tournaments.map((t) => [t.id, t.kind] as const));

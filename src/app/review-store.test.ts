@@ -152,7 +152,7 @@ describe('review store', () => {
     const source = await setup();
     await source.store.importText(steps);
     await source.store.setKind('318586827', 'normal');
-    const part = await source.store.exportPart();
+    const { part } = await source.store.exportPart();
     expect(part?.tournaments.map((t) => t.kind).sort()).toEqual(['normal', 'satellit']);
     expect(part?.hands).toHaveLength(2);
 
@@ -161,7 +161,7 @@ describe('review store', () => {
     const summary = await target.store.mergeExport(part!);
     expect(summary).toMatchObject({ imported: 1, duplicates: 1 });
     expect(target.store.getSnapshot().tournaments.find((t) => t.id === '318586827')?.kind).toBe('normal');
-    expect(await (await setup()).store.exportPart()).toBeNull();
+    expect(await (await setup()).store.exportPart()).toEqual({ part: null, omitted: 0 });
   });
 
   it('skips a tournament whose stored record is from a newer version, reports it and continues with the others', async () => {
@@ -178,5 +178,52 @@ describe('review store', () => {
     expect(summary.failures).toEqual([expect.stringContaining('Bounty Hunters $2.50')]);
     expect(backend.dump()[tournamentKey('318083464')]).toBe(newerText);
     expect(backend.dump()[handKey('TM9999999991')]).toBeUndefined();
+  });
+
+  it('reloads the archive index when this tab becomes the writer, so it never drops the hands of another tab', async () => {
+    const backend = memoryReviewBackend();
+    let writer = false;
+    const mk = (canWrite: () => boolean) =>
+      createReviewStore({ backend, data: getPushFoldData(), canWrite, readOnly: false, pause: async () => {} });
+    const a = mk(() => true);
+    const b = mk(() => writer);
+    await a.load();
+    await b.load();
+    const hands = dailyClassic.split(/\n(?=Poker Hand #)/);
+    await a.importText(hands.slice(0, 2).join('\n\n'));
+    writer = true;
+    await b.refreshAccess();
+    await b.importText(hands.slice(2, 4).join('\n\n'));
+    expect(b.getSnapshot().tournaments[0].handIds).toHaveLength(4);
+    const stored = readTournament(backend.dump()[tournamentKey(b.getSnapshot().tournaments[0].id)]);
+    expect(stored.handIds).toHaveLength(4);
+  });
+
+  it('rejects kind change and delete while an import is running', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let hold = false;
+    const { store } = await setup({ pause: () => (hold ? gate : Promise.resolve()) });
+    await store.importText(bounty);
+    hold = true;
+    const id = store.getSnapshot().tournaments[0].id;
+    const running = store.importText(steps);
+    expect(store.getSnapshot().progress).not.toBeNull();
+    await expect(store.setKind(id, 'normal')).rejects.toThrow('Während eines Imports nicht möglich');
+    await expect(store.deleteTournament(id)).rejects.toThrow('Während eines Imports nicht möglich');
+    release();
+    await running;
+    expect(store.getSnapshot().tournaments.find((t) => t.id === id)?.kind).toBe('bounty');
+  });
+
+  it('counts unreadable archive entries that the export leaves out', async () => {
+    const backend = memoryReviewBackend({ [tournamentKey('999')]: 'kaputt' });
+    const { store } = await setup({ backend });
+    await store.importText(bounty);
+    const { part, omitted } = await store.exportPart();
+    expect(part?.hands).toHaveLength(1);
+    expect(omitted).toBe(1);
   });
 });

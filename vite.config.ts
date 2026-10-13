@@ -31,6 +31,8 @@ export default defineConfig({
       },
     }),
   ],
+  // The analysis worker imports modules; an ES worker keeps them as one module graph.
+  worker: { format: 'es' },
   build: { chunkSizeWarningLimit: 1200 },
   server: { host: '127.0.0.1', port: 5173 },
   preview: { host: '127.0.0.1', port: 4173 },

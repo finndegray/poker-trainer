@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
 import type { OpenTournament } from '../../app/review-store';
 import type { TournamentKind } from '../../review/tournament-kind';
-import { useReviewStore } from '../ReviewContext';
+import { formatCount } from '../../app/format';
+import { useReview, useReviewStore } from '../ReviewContext';
 import { ReviewHand } from './ReviewHand';
 import { ReviewImport } from './ReviewImport';
 import { ReviewOverview } from './ReviewOverview';
@@ -16,6 +17,7 @@ const defaultNow = () => new Date();
 
 export function ReviewScreen({ onBack, now = defaultNow }: { onBack: () => void; now?: () => Date }) {
   const store = useReviewStore();
+  const { reanalysis } = useReview();
   const [view, setView] = useState<View>({ name: 'overview' });
   const [open, setOpen] = useState<OpenTournament | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -83,7 +85,13 @@ export function ReviewScreen({ onBack, now = defaultNow }: { onBack: () => void;
             onDelete={() => void remove()}
           />
         ) : (
-          !message && <p className="panel muted">Turnier wird geladen …</p>
+          !message && (
+            <p className="panel muted" aria-live="polite">
+              {reanalysis
+                ? `Hände werden neu bewertet: ${formatCount(reanalysis.hand)} von ${formatCount(reanalysis.hands)}`
+                : 'Turnier wird geladen …'}
+            </p>
+          )
         ))}
       {view.name === 'hand' && open && item && <ReviewHand key={item.record.id} item={item} kind={open.tournament.kind} />}
     </>

@@ -8,6 +8,7 @@ import { createUpdatePolicy } from './app/update-policy';
 import { registerSW } from 'virtual:pwa-register';
 import { mulberry32 } from './engine/rng';
 import { indexedDbReviewBackend, memoryReviewBackend } from './review/archive';
+import { createInlineAnalyzer, createWorkerAnalyzer } from './review/analyzer';
 import { App } from './ui/App';
 import { GameProvider } from './ui/GameContext';
 import { ReviewProvider } from './ui/ReviewContext';
@@ -67,16 +68,24 @@ async function bootstrap(): Promise<void> {
   const ready = store;
   if (updateNotice) ready.setUpdateAvailable();
   // The hand archive lives in its own database and follows the save's storage mode and writer lock.
+  // Hands are rated in a Web Worker (Monte-Carlo equities); without a worker on the main thread in chunks.
+  const analyzer = createWorkerAnalyzer(
+    getPushFoldData(),
+    () => new Worker(new URL('./review/analysis.worker.ts', import.meta.url), { type: 'module' }),
+    createInlineAnalyzer(getPushFoldData()),
+  );
   const review = createReviewStore({
     backend: opened.info.mode === 'indexeddb' ? indexedDbReviewBackend() : memoryReviewBackend(),
     data: getPushFoldData(),
     canWrite: () => opened.canWrite(),
     readOnly: opened.info.readOnly,
+    analyzer,
   });
-  void review.load();
+  // Archived hands from an older analysis version are rated again in the background (writing tab only).
+  review.load().then(() => review.refreshStale()).catch(logError);
   opened.onWriterAcquired((fresh) => {
     ready.adoptSavedState(fresh);
-    review.refreshAccess().catch(logError);
+    review.refreshAccess().then(() => review.refreshStale()).catch(logError);
   });
   document.addEventListener('visibilitychange', () => {
     const visible = document.visibilityState === 'visible';

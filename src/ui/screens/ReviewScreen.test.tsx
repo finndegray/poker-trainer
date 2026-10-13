@@ -39,8 +39,28 @@ describe('ReviewScreen overview and import', () => {
     expect(within(balance).getByText('Importiert: 6 · Schon vorhanden: 0 · Übersprungen: 0')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Zur Übersicht' }));
     const row = screen.getByRole('row', { name: /Daily Classic \$1/ });
-    expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual(['13.10.2026', 'Normal', '6', '3', '–', '50']);
+    expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual(['13.10.2026', 'Normal', '6', '3', '0', '50']);
     expect(screen.getByRole('img', { name: 'Fehler pro 100 Hände der letzten 8 Wochen' })).toBeTruthy();
+  });
+
+  it('shows a dash for postflop errors of a tournament that still waits for the new rating', async () => {
+    const { memoryReviewBackend } = await import('../../review/archive');
+    const backend = memoryReviewBackend();
+    const first = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />, { reviewBackend: backend });
+    await act(async () => {
+      await first.loaded;
+      await first.review.importText(bounty);
+    });
+    first.unmount();
+    // The record as Plan 7 wrote it: no analysis version, so its summary has no postflop rating yet.
+    const key = 'tournament:318083464';
+    const { analysisVersion: _, ...plan7 } = JSON.parse(backend.dump()[key]);
+    await backend.setMany([[key, JSON.stringify(plan7)]]);
+    const second = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />, { reviewBackend: backend, info: { otherTabActive: true } });
+    await act(() => second.loaded);
+    const row = screen.getByRole('row', { name: /Bounty Hunters/ });
+    expect(within(row).getAllByRole('cell')[4].textContent).toBe('–');
+    expect(within(row).getAllByRole('cell')[4].getAttribute('title')).toBe('Wird neu bewertet, sobald du das Turnier öffnest');
   });
 
   it('imports files and lists skipped files with their reason', async () => {
@@ -115,6 +135,16 @@ describe('ReviewScreen tournament', () => {
     expect(hands()).toHaveLength(3);
   });
 
+  it('shows a postflop "fraglich" under "Auch fraglich" but not under "Nur Fehler"', async () => {
+    await withHands(bounty);
+    await openTournament('Bounty Hunters $2.50');
+    expect(screen.getByRole('button', { name: /66 · UTG/ }).textContent).toContain('Fraglich');
+    fireEvent.click(screen.getByRole('button', { name: 'Nur Fehler' }));
+    expect(screen.getByText('Keine Hände für diesen Filter.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Auch fraglich' }));
+    expect(screen.getByRole('button', { name: /66 · UTG/ })).toBeTruthy();
+  });
+
   it('changes the kind: errors become hints and are not counted', async () => {
     await withHands();
     await openTournament('Daily Classic $1');
@@ -172,8 +202,11 @@ describe('ReviewScreen hand view', () => {
     expect(screen.getByRole('heading', { name: 'Richtig' })).toBeTruthy();
     fireEvent.keyDown(window, { key: 'ArrowRight' });
     expect(screen.getByText('Du bist dran – deine Wahl: Bet 4,4 BB')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Nicht bewertet' })).toBeTruthy();
-    expect(screen.getByText('Postflop-Bewertung folgt')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Passt' })).toBeTruthy();
+    expect(screen.getByText('Einsatz in üblicher Größe.')).toBeTruthy();
+    expect(screen.getByText('Einsatz 50 % vom Pot · SPR 8,7 · 8 Outs')).toBeTruthy();
+    expect(screen.getByText(/^Gegner CO: Call gegen deinen Open · Chart für 100 BB · etwa \d+ Kombinationen$/)).toBeTruthy();
+    expect(screen.getByText('Faustregel, kein Solver-Ergebnis')).toBeTruthy();
     expect(screen.getByLabelText('Board')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Schritt vor' }));
     expect(screen.getByText('CO: Call 4,4 BB')).toBeTruthy();

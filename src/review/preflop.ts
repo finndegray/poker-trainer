@@ -6,6 +6,7 @@ import { MAX_STACK, MIN_STACK, type PushFoldData } from '../engine/pushfold-data
 import { type Position, seatOf } from '../engine/positions';
 import { type TableState, playableChips } from './hand-model';
 import { type ActionEvent, HERO, type ParsedHand } from './parse';
+import type { PostflopRating } from './postflop';
 
 /** A raise to at least this share of the stack counts as all-in (spec 6). */
 export const SHOVE_SHARE = 0.8;
@@ -26,7 +27,12 @@ export type UnratedReason =
   | 'shortNotPushFold'
   | 'deepAllIn'
   | 'otherSpot'
-  | 'postflopPending';
+  | 'postflopPending'
+  | 'multiwayPostflop'
+  | 'unknownRange'
+  | 'limpRange'
+  | 'deepRange'
+  | 'shortRange';
 
 export const UNRATED_TEXT: Record<UnratedReason, string> = {
   tableSize: 'Tischgröße',
@@ -41,6 +47,11 @@ export const UNRATED_TEXT: Record<UnratedReason, string> = {
   deepAllIn: 'All-in mit mehr als 20 BB (kein Chart-Spot)',
   otherSpot: 'Spot vom Modell nicht abgedeckt',
   postflopPending: 'Postflop-Bewertung folgt',
+  multiwayPostflop: 'Multiway',
+  unknownRange: 'Range des Gegners unbekannt',
+  limpRange: 'Range des Gegners unbekannt: Limp-Pot',
+  deepRange: 'Range des Gegners unbekannt: 4-Bet-Pot',
+  shortRange: 'Range des Gegners unbekannt: höchstens 20 BB (kein Chart)',
 };
 
 export type PushFoldRating = { model: 'pushfold'; spot: Spot; chosen: Action; grade: Grade; effectiveBb: number };
@@ -54,8 +65,7 @@ export type ChartRating = {
   approximation: boolean;
 };
 export type UnratedRating = { model: 'unrated'; reason: UnratedReason };
-/** Plan 8 adds a postflop rating to this union; Plan 7 never creates one. */
-export type DecisionRating = PushFoldRating | ChartRating | UnratedRating;
+export type DecisionRating = PushFoldRating | ChartRating | PostflopRating | UnratedRating;
 
 export type ModelChoice = { model: 'pushfold'; stack: number } | { model: 'chart'; depth: StackDepth; approximation: boolean };
 

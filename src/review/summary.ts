@@ -3,22 +3,27 @@ import type { HandAnalysis, HeroDecision } from './analysis';
 import type { TournamentKind } from './tournament-kind';
 
 /**
- * What a decision counts as. `error` = preflop "falsch" in a normal tournament; in satellites and bounty
- * tournaments the same spot becomes a `hint` and is not counted (spec 5).
+ * What a decision counts as. `error` = preflop "falsch" or postflop "wahrscheinlich Fehler" in a normal tournament;
+ * in satellites and bounty tournaments the same decision becomes a `hint` and is not counted (spec 5).
+ * `questionable` = postflop "fraglich".
  */
-export type DecisionOutcome = 'error' | 'hint' | 'close' | 'correct' | 'unrated';
+export type DecisionOutcome = 'error' | 'hint' | 'questionable' | 'close' | 'correct' | 'unrated';
 
 export const SATELLITE_HINT = 'Satellit/Bounty – Standard-Chart nur bedingt gültig';
 
 export function decisionOutcome(decision: HeroDecision, kind: TournamentKind): DecisionOutcome {
   const { rating } = decision;
   if (rating.model === 'unrated') return 'unrated';
+  if (rating.model === 'postflop') {
+    if (rating.verdict === 'mistake') return kind === 'normal' ? 'error' : 'hint';
+    return rating.verdict === 'questionable' ? 'questionable' : 'correct';
+  }
   const verdict = rating.grade.verdict;
   if (verdict === 'wrong') return kind === 'normal' ? 'error' : 'hint';
   return verdict === 'close' ? 'close' : 'correct';
 }
 
-const SEVERITY: Record<DecisionOutcome, number> = { error: 4, hint: 3, close: 2, correct: 1, unrated: 0 };
+const SEVERITY: Record<DecisionOutcome, number> = { error: 5, hint: 4, questionable: 3, close: 2, correct: 1, unrated: 0 };
 
 /** Higher is worse; hands are sorted by it in the tournament view. */
 export const handSeverity = (analysis: HandAnalysis, kind: TournamentKind): number =>
@@ -36,18 +41,18 @@ export function handOutcome(analysis: HandAnalysis, kind: TournamentKind): Decis
 
 export type HandFilter = 'errors' | 'questionable' | 'all';
 
-/** "auch fraglich" shows errors and satellite/bounty hints; Plan 8 adds the postflop "fraglich". */
+/** "auch fraglich" shows errors, satellite/bounty hints and postflop "fraglich". */
 export function matchesFilter(analysis: HandAnalysis, kind: TournamentKind, filter: HandFilter): boolean {
   if (filter === 'all') return true;
   const severity = handSeverity(analysis, kind);
-  return filter === 'errors' ? severity >= SEVERITY.error : severity >= SEVERITY.hint;
+  return filter === 'errors' ? severity >= SEVERITY.error : severity >= SEVERITY.questionable;
 }
 
-export type DaySummary = { hands: number; preflopErrors: number };
+/** `postflopErrors` is missing in summaries written before Plan 8 (read as 0). */
+export type DaySummary = { hands: number; preflopErrors: number; postflopErrors?: number };
 export type TournamentSummary = {
   hands: number;
   preflopErrors: number;
-  /** Always 0 until Plan 8 rates postflop decisions. */
   postflopErrors: number;
   hints: number;
   /** Per date key, for the weekly "Fehler pro 100 Hände" trend. */
@@ -57,7 +62,7 @@ export type TournamentSummary = {
 export function summarize(entries: readonly { dateKey: string; analysis: HandAnalysis }[], kind: TournamentKind): TournamentSummary {
   const summary: TournamentSummary = { hands: 0, preflopErrors: 0, postflopErrors: 0, hints: 0, days: {} };
   for (const { dateKey, analysis } of entries) {
-    const day = (summary.days[dateKey] ??= { hands: 0, preflopErrors: 0 });
+    const day = (summary.days[dateKey] ??= { hands: 0, preflopErrors: 0, postflopErrors: 0 });
     summary.hands++;
     day.hands++;
     for (const d of analysis.decisions) {
@@ -67,7 +72,10 @@ export function summarize(entries: readonly { dateKey: string; analysis: HandAna
       if (d.street === 'preflop') {
         summary.preflopErrors++;
         day.preflopErrors++;
-      } else summary.postflopErrors++;
+      } else {
+        summary.postflopErrors++;
+        day.postflopErrors = (day.postflopErrors ?? 0) + 1;
+      }
     }
   }
   return summary;
@@ -89,7 +97,7 @@ export function weeklyErrorTrend(summaries: readonly TournamentSummary[], todayK
       for (const [key, day] of Object.entries(s.days)) {
         if (key < weekStart || key > weekEnd) continue;
         hands += day.hands;
-        errors += day.preflopErrors;
+        errors += day.preflopErrors + (day.postflopErrors ?? 0);
       }
     }
     out.push({ weekStart, weekEnd, hands, errors, per100: errorsPer100(errors, hands) });

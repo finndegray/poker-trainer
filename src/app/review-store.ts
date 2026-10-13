@@ -1,6 +1,8 @@
 import type { PushFoldData } from '../engine/pushfold-data';
-import { ANALYSIS_VERSION, analyzeHand } from '../review/analysis';
+import { ANALYSIS_VERSION } from '../review/analysis';
+import { type HandAnalyzer, createInlineAnalyzer } from '../review/analyzer';
 import {
+  ArchiveFormatError,
   type ArchiveProblem,
   type HandRecord,
   REVIEW_SCHEMA_VERSION,
@@ -42,6 +44,8 @@ export type ReviewSnapshot = {
   /** Why import, kind change and delete are blocked; null when writable. */
   lockReason: string | null;
   progress: ImportProgress | null;
+  /** Archived hands being rated again after a logic change (ANALYSIS_VERSION); null when idle. */
+  reanalysis: ImportProgress | null;
   lastImport: ImportSummary | null;
 };
 export type ReviewStoreDeps = {
@@ -51,6 +55,8 @@ export type ReviewStoreDeps = {
   canWrite: () => boolean;
   /** The save comes from a newer app version. */
   readOnly: boolean;
+  /** Rates hands; main.tsx passes the Web Worker analyzer. Default: on the main thread in chunks. */
+  analyzer?: HandAnalyzer;
   pause?: () => Promise<void>;
 };
 export type ReviewStore = {
@@ -64,6 +70,11 @@ export type ReviewStore = {
   importFiles(files: readonly ImportFile[]): Promise<ImportSummary>;
   importText(text: string): Promise<ImportSummary>;
   openTournament(id: string): Promise<OpenTournament>;
+  /**
+   * Rates every tournament whose hands come from an older analysis version again and stores the result, one
+   * tournament after the other. Only in the writing tab; does nothing otherwise or while it already runs.
+   */
+  refreshStale(): Promise<void>;
   setKind(id: string, kind: TournamentKind): Promise<void>;
   deleteTournament(id: string): Promise<void>;
   /** The archive part of a manual export (null when the archive is empty) and the number of unreadable entries left out of it. */
@@ -82,6 +93,7 @@ const byNewest = (a: TournamentRecord, b: TournamentRecord) => b.lastPlayedAt.lo
 
 export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
   const { backend, data, canWrite, readOnly } = deps;
+  const analyzer = deps.analyzer ?? createInlineAnalyzer(data, deps.pause);
   let newerArchive = false;
   const listeners = new Set<() => void>();
   let chain: Promise<unknown> = Promise.resolve();
@@ -100,6 +112,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
     writable: false,
     lockReason: null,
     progress: null,
+    reanalysis: null,
     lastImport: null,
   };
   const update = (patch: Partial<ReviewSnapshot>) => {
@@ -119,38 +132,42 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
     if (!snapshot.writable) throw new Error(snapshot.lockReason ?? 'Das Hand-Archiv wird noch geladen.');
   };
 
-  /** Parses the stored text and rates it again when the analysis is missing, broken or from another version. */
-  function fresh(record: HandRecord): { item: ReviewHand; changed: boolean } | null {
-    let hand: ParsedHand;
-    try {
-      hand = parseHand(record.raw);
-    } catch (error) {
-      if (error instanceof HandParseError) return null;
-      throw error;
-    }
-    if (record.analysisVersion === ANALYSIS_VERSION && isHandAnalysis(record.analysis)) return { item: { record, hand }, changed: false };
-    const analysis = analyzeHand(hand, data);
-    return { item: { record: { ...record, analysis, analysisVersion: analysis.version }, hand }, changed: true };
-  }
-
   type LoadedHands = { hands: ReviewHand[]; changed: HandRecord[]; problems: ArchiveProblem[] };
 
-  async function loadTournamentHands(tournament: TournamentRecord): Promise<LoadedHands> {
+  /**
+   * Loads the hands of a tournament, parses the stored texts and rates every hand again whose analysis is missing,
+   * broken or from another version (`changed`). Unreadable texts are reported, never deleted.
+   */
+  async function loadTournamentHands(tournament: TournamentRecord, onProgress?: (done: number, total: number) => void): Promise<LoadedHands> {
     const loaded = await loadHands(backend, tournament.handIds);
     const problems = [...loaded.problems];
-    const hands: ReviewHand[] = [];
-    const changed: HandRecord[] = [];
+    const parsed: ReviewHand[] = [];
+    const stale: number[] = [];
     for (const record of loaded.hands) {
-      const result = fresh(record);
-      if (!result) {
+      let hand: ParsedHand;
+      try {
+        hand = parseHand(record.raw);
+      } catch (error) {
+        if (!(error instanceof HandParseError)) throw error;
         problems.push({ key: `hand:${record.id}`, reason: 'Hand-Text nicht lesbar' });
         continue;
       }
-      hands.push(result.item);
-      if (result.changed) changed.push(result.item.record);
+      if (record.analysisVersion !== ANALYSIS_VERSION || !isHandAnalysis(record.analysis)) stale.push(parsed.length);
+      parsed.push({ record, hand });
     }
-    return { hands, changed, problems };
+    const analyses =
+      stale.length === 0 ? [] : await analyzer.analyze(stale.map((i) => parsed[i].hand), (done) => onProgress?.(done, stale.length));
+    const changed: HandRecord[] = [];
+    stale.forEach((i, k) => {
+      const record: HandRecord = { ...parsed[i].record, analysis: analyses[k], analysisVersion: analyses[k].version };
+      parsed[i] = { record, hand: parsed[i].hand };
+      changed.push(record);
+    });
+    return { hands: parsed, changed, problems };
   }
+
+  const isCurrent = (t: TournamentRecord) => (t.analysisVersion ?? 1) === ANALYSIS_VERSION;
+  let refreshing: Promise<void> | null = null;
 
   const replaceTournament = (record: TournamentRecord) =>
     [...snapshot.tournaments.filter((t) => t.id !== record.id), record].sort(byNewest);
@@ -169,31 +186,36 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
     const plan = planImport(texts, existing, blocked);
     update({ progress: { tournament: 0, tournaments: plan.tournaments.size, hand: 0, hands: 0 } });
     try {
-      const analyzed = await analyzePlan(plan, data, (progress) => update({ progress }), deps.pause);
+      const analyzed = await analyzePlan(plan, analyzer, (progress) => update({ progress }));
       let imported = 0;
       let tournaments = 0;
       const failures: string[] = [];
       for (const [id, items] of analyzed) {
-        const previous = snapshot.tournaments.find((t) => t.id === id) ?? null;
-        const old: LoadedHands = previous ? await loadTournamentHands(previous) : { hands: [], changed: [], problems: [] };
         const added = items.map(handRecordOf);
-        const record = tournamentRecordOf(
-          id,
-          items[0].hand.tournamentName,
-          [...old.hands.map((h) => h.record), ...added],
-          previous,
-          previous ? null : (kinds.get(id) ?? null),
-        );
         try {
-          await serial(() => writeRecords(backend, [record], [...old.changed, ...added]));
+          // Load, merge and write in one serial step, so a background re-rating never interleaves with it.
+          const record = await serial(async () => {
+            const previous = snapshot.tournaments.find((t) => t.id === id) ?? null;
+            const old: LoadedHands = previous ? await loadTournamentHands(previous) : { hands: [], changed: [], problems: [] };
+            const next = tournamentRecordOf(
+              id,
+              items[0].hand.tournamentName,
+              [...old.hands.map((h) => h.record), ...added],
+              previous,
+              previous ? null : (kinds.get(id) ?? null),
+            );
+            assertWritable();
+            await writeRecords(backend, [next], [...old.changed, ...added]);
+            return next;
+          });
+          imported += added.length;
+          tournaments += 1;
+          update({ tournaments: replaceTournament(record) });
         } catch (error) {
           // A refused tournament (newer version, unreadable record) is reported; the others continue.
-          failures.push(writeFailureMessage(error, record.name));
-          continue;
+          const name = snapshot.tournaments.find((t) => t.id === id)?.name ?? items[0].hand.tournamentName;
+          failures.push(writeFailureMessage(error, name));
         }
-        imported += added.length;
-        tournaments += 1;
-        update({ tournaments: replaceTournament(record) });
       }
       const summary: ImportSummary = {
         imported,
@@ -240,30 +262,89 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
     importText(text) {
       return importTexts([{ name: 'Eingefügt', text }], []);
     },
-    async openTournament(id) {
-      const tournament = snapshot.tournaments.find((t) => t.id === id);
-      if (!tournament) throw new Error('Turnier nicht gefunden');
-      const loaded = await loadTournamentHands(tournament);
-      let current = tournament;
-      // Hands rated by an older version are rated again; the result is kept when this tab may write.
-      if (loaded.changed.length > 0) {
-        current = tournamentRecordOf(id, tournament.name, loaded.hands.map((h) => h.record), tournament);
-        if (snapshot.writable) {
-          await serial(() => writeRecords(backend, [current], loaded.changed));
-          update({ tournaments: replaceTournament(current) });
+    openTournament(id) {
+      if (!snapshot.tournaments.some((t) => t.id === id)) return Promise.reject(new Error('Turnier nicht gefunden'));
+      const open = async (): Promise<OpenTournament> => {
+        const tournament = snapshot.tournaments.find((t) => t.id === id);
+        if (!tournament) throw new Error('Turnier nicht gefunden');
+        let shown = false;
+        try {
+          const loaded = await loadTournamentHands(tournament, (hand, hands) => {
+            shown = true;
+            update({ reanalysis: { tournament: 1, tournaments: 1, hand, hands } });
+          });
+          let current = tournament;
+          // Hands rated by an older version are rated again; the result is kept when this tab may write.
+          if (loaded.changed.length > 0) {
+            current = tournamentRecordOf(id, tournament.name, loaded.hands.map((h) => h.record), tournament);
+            // The lock may have gone while the hands were rated: re-check right before the write.
+            update({});
+            if (snapshot.writable) {
+              await writeRecords(backend, [current], loaded.changed);
+              update({ tournaments: replaceTournament(current) });
+            }
+          }
+          return { tournament: current, hands: loaded.hands, problems: loaded.problems };
+        } finally {
+          if (shown && !refreshing) update({ reanalysis: null });
         }
-      }
-      return { tournament: current, hands: loaded.hands, problems: loaded.problems };
+      };
+      // A writing tab loads, rates and stores in one serial step; a reading tab rates in memory only.
+      return snapshot.writable ? serial(open) : open();
+    },
+    refreshStale() {
+      if (refreshing) return refreshing;
+      if (snapshot.status === 'ready') update({});
+      const ids = snapshot.writable ? snapshot.tournaments.filter((t) => !isCurrent(t)).map((t) => t.id) : [];
+      if (ids.length === 0) return Promise.resolve();
+      const run = async () => {
+        try {
+          for (const [k, id] of ids.entries()) {
+            const stop = await serial(async () => {
+              update({});
+              if (!snapshot.writable) return true;
+              const tournament = snapshot.tournaments.find((t) => t.id === id);
+              if (!tournament || isCurrent(tournament)) return false;
+              const loaded = await loadTournamentHands(tournament, (hand, hands) =>
+                update({ reanalysis: { tournament: k + 1, tournaments: ids.length, hand, hands } }),
+              );
+              // A tournament with unreadable hands keeps its record; opening it shows the problem.
+              if (loaded.problems.length > 0) return false;
+              const record = tournamentRecordOf(id, tournament.name, loaded.hands.map((h) => h.record), tournament);
+              update({});
+              if (!snapshot.writable) return true;
+              try {
+                await writeRecords(backend, [record], loaded.changed);
+              } catch (error) {
+                if (!(error instanceof ArchiveFormatError)) throw error;
+                return false;
+              }
+              update({ tournaments: replaceTournament(record) });
+              return false;
+            });
+            if (stop) break;
+          }
+        } finally {
+          refreshing = null;
+          update({ reanalysis: null });
+        }
+      };
+      refreshing = run();
+      return refreshing;
     },
     async setKind(id, kind) {
       assertWritable();
       if (snapshot.progress) throw new Error(BLOCKED_DURING_IMPORT);
-      const tournament = snapshot.tournaments.find((t) => t.id === id);
-      if (!tournament) throw new Error('Turnier nicht gefunden');
-      const loaded = await loadTournamentHands(tournament);
-      const record = tournamentRecordOf(id, tournament.name, loaded.hands.map((h) => h.record), tournament, kind);
-      await serial(() => writeRecords(backend, [record], loaded.changed));
-      update({ tournaments: replaceTournament(record) });
+      if (!snapshot.tournaments.some((t) => t.id === id)) throw new Error('Turnier nicht gefunden');
+      await serial(async () => {
+        const tournament = snapshot.tournaments.find((t) => t.id === id);
+        if (!tournament) throw new Error('Turnier nicht gefunden');
+        const loaded = await loadTournamentHands(tournament);
+        const record = tournamentRecordOf(id, tournament.name, loaded.hands.map((h) => h.record), tournament, kind);
+        assertWritable();
+        await writeRecords(backend, [record], loaded.changed);
+        update({ tournaments: replaceTournament(record) });
+      });
     },
     async deleteTournament(id) {
       assertWritable();

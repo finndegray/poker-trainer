@@ -1,10 +1,11 @@
 import type { PushFoldData } from '../engine/pushfold-data';
 import { maxStreetBet, positionsOf, walkHand } from './hand-model';
 import { HERO, type ActionType, type ParsedHand, type Street } from './parse';
+import { ratePostflop, unmatchedBet } from './postflop';
 import { type DecisionRating, ratePreflopDecision } from './preflop';
 
 /** Bump when the rating logic changes: archived hands with another version are rated again when opened. */
-export const ANALYSIS_VERSION = 1;
+export const ANALYSIS_VERSION = 2;
 
 export type HeroDecision = {
   /** Index into `ParsedHand.events`. */
@@ -17,6 +18,8 @@ export type HeroDecision = {
   toCall: number;
   stack: number;
   amount: number;
+  /** The part of the bet in front of the hero that exceeds his stack (omitted when 0); needed for the pot odds of unrated decisions. */
+  excess?: number;
   /** Street total of a raise, as in the hand history. */
   to: number | null;
   rating: DecisionRating;
@@ -26,6 +29,7 @@ export type HandAnalysis = { version: number; decisions: HeroDecision[] };
 export function analyzeHand(hand: ParsedHand, data: PushFoldData): HandAnalysis {
   const positions = positionsOf(hand);
   const states = walkHand(hand, positions);
+  const postflop = ratePostflop(hand, states, positions);
   const decisions: HeroDecision[] = [];
   hand.events.forEach((event, index) => {
     if (event.type !== 'action' || event.player !== HERO) return;
@@ -34,7 +38,7 @@ export function analyzeHand(hand: ParsedHand, data: PushFoldData): HandAnalysis 
     const rating: DecisionRating =
       event.street === 'preflop'
         ? ratePreflopDecision(hand, index, state, positions, data)
-        : { model: 'unrated', reason: 'postflopPending' };
+        : postflop.get(index)!;
     decisions.push({
       eventIndex: index,
       street: event.street,
@@ -45,6 +49,7 @@ export function analyzeHand(hand: ParsedHand, data: PushFoldData): HandAnalysis 
       stack: hero.stack,
       amount: event.amount,
       to: event.to,
+      ...(unmatchedBet(state) > 0 ? { excess: unmatchedBet(state) } : {}),
       rating,
     });
   });

@@ -1,12 +1,13 @@
 import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { getPushFoldData } from '../app/data';
+import { ANALYSIS_VERSION } from './analysis';
+import { createInlineAnalyzer } from './analyzer';
 import { memoryReviewBackend, tournamentKey, writeRecords } from './archive';
 import bounty from './fixtures/bounty.txt?raw';
 import dailyClassic from './fixtures/daily-classic.txt?raw';
 import steps from './fixtures/step-satellites.txt?raw';
 import {
-  HANDS_PER_CHUNK,
   ImportLimitError,
   MAX_FILE_BYTES,
   MAX_HANDS_PER_IMPORT,
@@ -124,34 +125,34 @@ describe('planImport', () => {
 });
 
 describe('analyzePlan', () => {
-  it('rates in chunks and reports progress per tournament and hand', async () => {
+  it('rates tournament by tournament with the analyzer and reports progress per tournament and hand', async () => {
     const plan = planImport(texts(steps, bounty), new Set());
     const progress: ImportProgress[] = [];
-    let pauses = 0;
-    const result = await analyzePlan(plan, getPushFoldData(), (p) => progress.push(p), async () => {
-      pauses++;
-    });
+    const result = await analyzePlan(plan, createInlineAnalyzer(getPushFoldData(), async () => {}), (p) => progress.push(p));
     expect([...result.keys()]).toEqual(['318586851', '318586827', '318083464']);
+    expect(result.get('318083464')![0].analysis.version).toBe(ANALYSIS_VERSION);
     expect(progress).toEqual([
+      { tournament: 1, tournaments: 3, hand: 0, hands: 1 },
+      { tournament: 1, tournaments: 3, hand: 0, hands: 1 },
       { tournament: 1, tournaments: 3, hand: 1, hands: 1 },
-      { tournament: 1, tournaments: 3, hand: 1, hands: 1 },
+      { tournament: 2, tournaments: 3, hand: 0, hands: 1 },
+      { tournament: 2, tournaments: 3, hand: 0, hands: 1 },
       { tournament: 2, tournaments: 3, hand: 1, hands: 1 },
-      { tournament: 2, tournaments: 3, hand: 1, hands: 1 },
-      { tournament: 3, tournaments: 3, hand: 1, hands: 1 },
+      { tournament: 3, tournaments: 3, hand: 0, hands: 1 },
+      { tournament: 3, tournaments: 3, hand: 0, hands: 1 },
       { tournament: 3, tournaments: 3, hand: 1, hands: 1 },
     ]);
-    expect(pauses).toBe(3);
-    expect(HANDS_PER_CHUNK).toBe(25);
   });
 
-  it('rates 500 hands well within 30 seconds', async () => {
+  it('rates 500 hands with postflop decisions well within 30 seconds', async () => {
     const hand = parseHand(bounty);
     const many = Array.from({ length: 500 }, (_, i) => hand.raw.replace('TM6532114653', `TM${900000 + i}`)).join('\n\n\n');
     const started = performance.now();
     const plan = planImport(texts(many), new Set());
-    const result = await analyzePlan(plan, getPushFoldData(), () => {});
+    const result = await analyzePlan(plan, createInlineAnalyzer(getPushFoldData(), async () => {}), () => {});
     const ms = performance.now() - started;
     expect(result.get('318083464')).toHaveLength(500);
+    expect(result.get('318083464')!.every((a) => a.analysis.decisions.filter((d) => d.rating.model === 'postflop').length === 5)).toBe(true);
     expect(ms).toBeLessThan(30_000);
   });
 });
@@ -162,7 +163,9 @@ describe('records', () => {
     const records = hands.map((hand) => handRecordOf({ hand, analysis: { version: 1, decisions: [] } }));
     expect(records[0]).toMatchObject({ reviewSchemaVersion: 1, id: 'TM6532799440', tournamentId: '318586827', dateKey: '2026-10-13', analysisVersion: 1 });
     const fresh = tournamentRecordOf('318586827', '$0.50 Step to The Weekender', records, null);
-    expect(fresh).toMatchObject({ detectedKind: 'satellit', kind: 'satellit', handIds: ['TM6532799440'], firstPlayedAt: '2026-10-13 11:31:49' });
+    expect(fresh).toMatchObject({ detectedKind: 'satellit', kind: 'satellit', handIds: ['TM6532799440'], firstPlayedAt: '2026-10-13 11:31:49', analysisVersion: 1 });
+    const current = records.map((r) => ({ ...r, analysisVersion: ANALYSIS_VERSION }));
+    expect(tournamentRecordOf('318586827', 'x', current, null).analysisVersion).toBe(ANALYSIS_VERSION);
     const changed = tournamentRecordOf('318586827', 'egal', records, { ...fresh, kind: 'normal' });
     expect(changed).toMatchObject({ name: '$0.50 Step to The Weekender', detectedKind: 'satellit', kind: 'normal' });
     expect(tournamentRecordOf('318586827', 'x', records, fresh, 'bounty').kind).toBe('bounty');

@@ -114,6 +114,7 @@
 }
 
 .review-hand--hint .review-hand__outcome,
+.review-hand--questionable .review-hand__outcome,
 .review-hand--close .review-hand__outcome {
   color: var(--gold);
 }

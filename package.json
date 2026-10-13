@@ -18,7 +18,8 @@
     "data:print": "tsx scripts/print-ranges.ts",
     "charts:print": "tsx scripts/print-charts.ts",
     "icons": "tsx scripts/make-icons.ts",
-    "check:portability": "node scripts/check-portability.mjs ."
+    "check:portability": "node scripts/check-portability.mjs .",
+    "review:bench": "tsx scripts/review-bench.ts"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",

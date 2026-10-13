@@ -76,6 +76,21 @@ describe('archive records', () => {
     expect(readHand(JSON.stringify(broken)).raw).toBe(hand.raw);
     expect(isHandAnalysis(broken.analysis)).toBe(false);
   });
+
+  it('accepts postflop ratings and the Plan 8 fields, and rejects broken ones', () => {
+    expect(handRecord.analysis.decisions.some((d) => d.rating.model === 'postflop')).toBe(true);
+    const badVerdict = { ...handRecord.analysis, decisions: [{ ...handRecord.analysis.decisions[1], rating: { model: 'postflop', verdict: 'vielleicht' } }] };
+    expect(isHandAnalysis(badVerdict)).toBe(false);
+    const rated: TournamentRecord = {
+      ...tournament,
+      analysisVersion: 2,
+      summary: { ...tournament.summary, postflopErrors: 1, days: { '2026-10-13': { hands: 1, preflopErrors: 0, postflopErrors: 1 } } },
+    };
+    expect(readTournament(JSON.stringify(rated))).toEqual(rated);
+    expect(() => readTournament(JSON.stringify({ ...tournament, analysisVersion: 'neu' }))).toThrow('Archiv-Eintrag nicht lesbar: Analyse-Version');
+    const badDay = { ...rated, summary: { ...rated.summary, days: { '2026-10-13': { hands: 1, preflopErrors: 0, postflopErrors: -1 } } } };
+    expect(() => readTournament(JSON.stringify(badDay))).toThrow('Archiv-Eintrag nicht lesbar: Zusammenfassung');
+  });
 });
 
 describe('archive store', () => {

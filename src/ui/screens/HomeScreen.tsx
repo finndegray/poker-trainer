@@ -42,7 +42,7 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
     },
     {
       title: 'Hand-Review',
-      text: 'GGPoker-Hände importieren und deine Preflop-Entscheidungen prüfen',
+      text: 'GGPoker-Hände importieren und deine Entscheidungen prüfen – preflop und postflop',
       button: 'Hände prüfen',
       target: 'review',
       // Viewing the archive stays possible in read-only mode; the import itself is blocked there.

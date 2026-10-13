@@ -14,6 +14,7 @@ import './review.css';
 export const OUTCOME_LABELS: Record<DecisionOutcome, string> = {
   error: 'Fehler',
   hint: 'Hinweis',
+  questionable: 'Fraglich',
   close: 'Knapp',
   correct: 'Richtig',
   unrated: 'Nicht bewertet',

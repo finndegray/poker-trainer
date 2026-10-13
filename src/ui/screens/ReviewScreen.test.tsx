@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import bounty from '../../review/fixtures/bounty.txt?raw';
 import dailyClassic from '../../review/fixtures/daily-classic.txt?raw';
 import steps from '../../review/fixtures/step-satellites.txt?raw';
+import { LOCK_OTHER_TAB } from '../../app/review-store';
 import { renderWithStore } from '../test-utils';
 import { ReviewScreen } from './ReviewScreen';
 
@@ -129,6 +130,17 @@ describe('ReviewScreen tournament', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Turnier löschen' }));
     expect(await screen.findByText('Noch keine Hände importiert.')).toBeTruthy();
     expect(review.getSnapshot().tournaments).toEqual([]);
+  });
+
+  it('shows why the kind and the delete button are disabled when the archive is not writable', async () => {
+    const first = await withHands(bounty);
+    first.unmount();
+    const second = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />, { reviewBackend: first.reviewBackend, info: { otherTabActive: true } });
+    await act(() => second.loaded);
+    await openTournament('Bounty Hunters $2.50');
+    expect((screen.getByLabelText('Art des Turniers') as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Turnier löschen' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(LOCK_OTHER_TAB)).toBeTruthy();
   });
 });
 

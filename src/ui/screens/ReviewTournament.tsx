@@ -83,6 +83,7 @@ export function ReviewTournament({ open, onOpenHand, onSetKind, onDelete }: Prop
           </select>
         </label>
         {kind !== 'normal' && <p className="muted">Satellit/Bounty – Standard-Chart nur bedingt gültig. Abweichungen zählen nicht als Fehler.</p>}
+        {review.lockReason && <p className="muted">{review.lockReason}</p>}
         {review.progress !== null && <p className="muted">Während eines Imports nicht möglich.</p>}
         {open.problems.length > 0 && (
           <p className="notice notice--warning" role="alert">

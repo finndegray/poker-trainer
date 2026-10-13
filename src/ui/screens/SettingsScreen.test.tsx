@@ -162,7 +162,7 @@ describe('SettingsScreen with the hand archive', () => {
     expect(await screen.findByText(/2 Hände ergänzt/)).toBeTruthy();
   });
 
-  it('waits for the archive before it can export', async () => {
+  it('keeps the export enabled once the archive has loaded', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -170,12 +170,23 @@ describe('SettingsScreen with the hand archive', () => {
     const inner = memoryReviewBackend();
     const reviewBackend = { ...inner, keys: async () => { await gate; return inner.keys(); } };
     const { loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />, { reviewBackend });
-    expect((screen.getByRole('button', { name: 'Exportieren' }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => {
       release();
       await loaded;
     });
     expect((screen.getByRole('button', { name: 'Exportieren' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('exports the save alone while the archive is still loading', async () => {
+    const gate = new Promise<void>(() => {});
+    const inner = memoryReviewBackend();
+    const reviewBackend = { ...inner, keys: async () => { await gate; return inner.keys(); } };
+    renderWithStore(<SettingsScreen onBack={() => {}} />, { reviewBackend });
+    const button = screen.getByRole('button', { name: 'Exportieren' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(downloadText).toHaveBeenCalledWith(expect.any(String), serialize(emptyState())));
+    expect(await screen.findByText('Export erstellt. Das Hand-Archiv wurde noch nicht geladen und fehlt darin.')).toBeTruthy();
   });
 
   it('reports unreadable archive entries left out of the export', async () => {

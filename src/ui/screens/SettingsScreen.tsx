@@ -49,10 +49,18 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
   // Without archived hands (and nothing unreadable) the export is exactly the save, as before (and written right away).
   const exportNow = async () => {
     const name = `poker-trainer-spielstand-${localDateKey(new Date())}.json`;
-    if (review.status === 'loading') return;
+    // The save export is never held back by the archive: while it loads (or failed to), the save goes out alone.
+    if (review.status === 'loading' || review.status === 'failed') {
+      downloadText(name, store.exportState());
+      setMessage(
+        review.status === 'loading'
+          ? 'Export erstellt. Das Hand-Archiv wurde noch nicht geladen und fehlt darin.'
+          : 'Export erstellt. Das Hand-Archiv konnte nicht geladen werden und fehlt darin.',
+      );
+      return;
+    }
     if (review.tournaments.length === 0 && review.problems.length === 0) {
       downloadText(name, store.exportState());
-      if (review.status === 'failed') setMessage('Export erstellt. Das Hand-Archiv konnte nicht geladen werden und fehlt darin.');
       return;
     }
     try {
@@ -150,7 +158,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
           Exportiere deinen Spielstand und dein Hand-Archiv als Datei, um sie zu sichern oder auf ein anderes Gerät zu übertragen.
         </p>
         <div className="settings-buttons">
-          <button type="button" className="btn" disabled={review.status === 'loading'} onClick={() => void exportNow()}>
+          <button type="button" className="btn" onClick={() => void exportNow()}>
             Exportieren
           </button>
           <button type="button" className="btn" disabled={!canWrite} onClick={() => fileInput.current?.click()}>

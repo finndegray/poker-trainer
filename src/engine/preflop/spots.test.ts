@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { aggressiveActionOf, allowedActions, chartKeyFor, expectedChartKeys, sizesFor, validSituations } from './spots';
+import {
+  PREFLOP_KIND_LABELS,
+  type PreflopSituation,
+  aggressiveActionOf,
+  allowedActions,
+  betsFor,
+  chartKeyFor,
+  expectedChartKeys,
+  isPreflopSpot,
+  preflopCategories,
+  preflopCategoryKey,
+  sizesFor,
+  validSituations,
+} from './spots';
 
 describe('preflop spots', () => {
   it('knows the actions per kind', () => {
@@ -51,5 +64,65 @@ describe('preflop spots', () => {
     expect(sizesFor({ kind: 'vsOpen', stack: 100, hero: 'BB', villain: 'SB' })).toEqual({ facing: 3, aggressiveTo: 12 });
     expect(sizesFor({ kind: 'vs3bet', stack: 100, hero: 'HJ', villain: 'BB' })).toEqual({ facing: 8.8, aggressiveTo: 19.4 });
     expect(sizesFor({ kind: 'vs3bet', stack: 40, hero: 'CO', villain: 'BTN' })).toEqual({ facing: 6.6, aggressiveTo: 40 });
+  });
+
+  it('rejects unknown kinds, stacks and positions', () => {
+    const bad = (s: unknown) => () => chartKeyFor(s as PreflopSituation);
+    expect(bad({ kind: 'limp', stack: 100, hero: 'UTG', villain: null })).toThrow(/Ungültiger Starthand-Spot/);
+    expect(bad({ kind: 'rfi', stack: 60, hero: 'UTG', villain: null })).toThrow(/Ungültiger Starthand-Spot/);
+    expect(bad({ kind: 'rfi', stack: 100, hero: 'XX', villain: null })).toThrow(/Ungültiger Starthand-Spot/);
+    expect(bad({ kind: 'vsOpen', stack: 100, hero: 'BB', villain: 'XX' })).toThrow(/Ungültiger Starthand-Spot/);
+    expect(bad({ kind: 'vs3bet', stack: 100, hero: 'UTG', villain: 'XX' })).toThrow(/Ungültiger Starthand-Spot/);
+  });
+
+  it('guards spots without throwing', () => {
+    const ok = { kind: 'vsOpen', stack: 100, hero: 'BB', villain: 'CO', hand: 5 };
+    expect(isPreflopSpot(ok)).toBe(true);
+    expect(isPreflopSpot({ ...ok, hand: 168 })).toBe(true);
+    expect(isPreflopSpot({ ...ok, kind: 'limp' })).toBe(false);
+    expect(isPreflopSpot({ ...ok, stack: 60 })).toBe(false);
+    expect(isPreflopSpot({ ...ok, villain: 'XX' })).toBe(false);
+    expect(isPreflopSpot({ ...ok, hand: 169 })).toBe(false);
+    expect(isPreflopSpot({ ...ok, hand: 2.5 })).toBe(false);
+    expect(isPreflopSpot({ ...ok, hero: 'UTG' })).toBe(false);
+    expect(isPreflopSpot(null)).toBe(false);
+    expect(isPreflopSpot('rfi')).toBe(false);
+  });
+
+  it('describes what is in the pot per kind', () => {
+    expect(betsFor({ kind: 'rfi', stack: 100, hero: 'CO', villain: null })).toEqual({
+      heroPosted: 0, villainPosted: null, facing: null, aggressiveTo: 2.2, stackBehind: 100,
+    });
+    expect(betsFor({ kind: 'rfi', stack: 100, hero: 'SB', villain: null })).toEqual({
+      heroPosted: 0.5, villainPosted: null, facing: null, aggressiveTo: 3, stackBehind: 99.5,
+    });
+    expect(betsFor({ kind: 'vsOpen', stack: 100, hero: 'BB', villain: 'SB' })).toEqual({
+      heroPosted: 1, villainPosted: 3, facing: 3, aggressiveTo: 12, stackBehind: 99,
+    });
+    expect(betsFor({ kind: 'vsOpen', stack: 40, hero: 'BTN', villain: 'CO' })).toEqual({
+      heroPosted: 0, villainPosted: 2.2, facing: 2.2, aggressiveTo: 6.6, stackBehind: 40,
+    });
+    expect(betsFor({ kind: 'vs3bet', stack: 100, hero: 'SB', villain: 'BB' })).toEqual({
+      heroPosted: 3, villainPosted: 12, facing: 12, aggressiveTo: 26.4, stackBehind: 97,
+    });
+    expect(betsFor({ kind: 'vs3bet', stack: 40, hero: 'CO', villain: 'BTN' })).toEqual({
+      heroPosted: 2.2, villainPosted: 6.6, facing: 6.6, aggressiveTo: 40, stackBehind: 37.8,
+    });
+    expect(() => betsFor({ kind: 'rfi', stack: 100, hero: 'BB', villain: null })).toThrow(/Ungültiger Starthand-Spot/);
+  });
+
+  it('labels the kinds', () => {
+    expect(PREFLOP_KIND_LABELS).toEqual({ rfi: 'Open-Raise', vsOpen: 'Gegen Open-Raise', vs3bet: 'Gegen 3-Bet' });
+  });
+
+  it('lists the categories', () => {
+    const expected = new Set(validSituations().map((s) => `${s.kind}|${s.hero}|${s.stack}`));
+    const cats = preflopCategories();
+    expect(cats).toHaveLength(expected.size);
+    expect(new Set(cats)).toEqual(expected);
+    expect([...cats].sort()).toEqual(cats);
+    expect(cats).toContain('rfi|UTG|100');
+    expect(cats).toContain('vs3bet|SB|40');
+    expect(preflopCategoryKey({ kind: 'vsOpen', stack: 40, hero: 'BB', villain: 'CO' })).toBe('vsOpen|BB|40');
   });
 });

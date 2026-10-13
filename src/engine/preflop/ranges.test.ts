@@ -20,6 +20,12 @@ describe('parseRange', () => {
     expect(names('JTs')).toEqual(['JTs']);
   });
 
+  it('reads descending spans, unsuffixed spans and already-complete plus entries', () => {
+    expect(names('K7s-K9s')).toEqual(['K7s', 'K8s', 'K9s']);
+    expect(names('AK-AQ')).toEqual(['AKo', 'AKs', 'AQo', 'AQs']);
+    expect(names('AKs+')).toEqual(['AKs']);
+  });
+
   it('treats a missing suffix as suited and offsuit', () => {
     expect(names('AK')).toEqual(['AKo', 'AKs']);
     expect(names('AQ+')).toEqual(['AKo', 'AKs', 'AQo', 'AQs']);
@@ -31,7 +37,7 @@ describe('parseRange', () => {
   });
 
   it('rejects invalid entries', () => {
-    for (const bad of ['AX', 'KAs', 'AAs', 'A9x', 'K9s-Q7s', 'K9s-K7o', 'T', '99-8', 'AK+s']) {
+    for (const bad of ['AX', 'KAs', 'AAs', 'A9x', 'K9s-Q7s', 'K9s-K7o', 'T', '99-8', 'AK+s', 'K9s-KAs']) {
       expect(() => parseRange(bad)).toThrow(`Ungültiger Range-Eintrag: ${bad}`);
     }
   });

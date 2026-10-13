@@ -70,6 +70,29 @@ describe('comparePreflopPositions', () => {
     expect(r.summary).toBe('AJo (40 BB, gegen 3-Bet aus den Blinds): Fold aus UTG bis HJ, knapp aus CO, All-in ab BTN');
   });
 
+  it('lists only earlier openers for an in-position defence', () => {
+    const r = comparePreflopPositions({ kind: 'vsOpen', stack: 100, hero: 'HJ', villain: 'UTG', hand: hand('JJ') });
+    expect(r.axis).toBe('opener');
+    expect(r.entries.map((e) => e.position)).toEqual(['UTG', 'UTG1', 'LJ']);
+    expect(r.entries.filter((e) => e.isCurrent).map((e) => e.position)).toEqual(['UTG']);
+    const btn = comparePreflopPositions({ kind: 'vsOpen', stack: 100, hero: 'BTN', villain: 'CO', hand: hand('JJ') });
+    expect(btn.entries.map((e) => e.position)).toEqual(['UTG', 'UTG1', 'LJ', 'HJ', 'CO']);
+  });
+
+  it('compares a small-blind defence across openers', () => {
+    const r = comparePreflopPositions({ kind: 'vsOpen', stack: 100, hero: 'SB', villain: 'CO', hand: hand('AQs') });
+    expect(r.axis).toBe('opener');
+    expect(r.entries.map((e) => e.position)).toEqual(['UTG', 'UTG1', 'LJ', 'HJ', 'CO', 'BTN']);
+    expect(r.entries.filter((e) => e.isCurrent).map((e) => e.position)).toEqual(['CO']);
+  });
+
+  it('compares 3-bet defences in position across own positions', () => {
+    const r = comparePreflopPositions({ kind: 'vs3bet', stack: 100, hero: 'HJ', villain: 'BTN', hand: hand('AQs') });
+    expect(r.axis).toBe('hero');
+    expect(r.entries.map((e) => e.position)).toEqual(['UTG', 'UTG1', 'LJ', 'HJ', 'CO']);
+    expect(r.entries.filter((e) => e.isCurrent).map((e) => e.position)).toEqual(['HJ']);
+  });
+
   it('uses "aus jeder Position" when every position agrees', () => {
     const r = comparePreflopPositions({ kind: 'rfi', stack: 40, hero: 'UTG', villain: null, hand: hand('AA') });
     expect(r.summary).toBe('AA (40 BB, Open-Raise): Raise aus jeder Position');

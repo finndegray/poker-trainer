@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { handName, parseHand } from '../cards';
 import type { Position } from '../positions';
-import { allCharts, buildChart, continueRange, mainActionOf, type PreflopChart } from './charts';
+import { allCharts, buildChart, chartFor, continueRange, mainActionOf, type PreflopChart } from './charts';
 import { rangeWidth } from './ranges';
 import { STACK_DEPTHS, expectedChartKeys } from './spots';
+
+describe('chartFor', () => {
+  it('throws for an invalid situation', () => {
+    expect(() => chartFor({ kind: 'rfi', stack: 100, hero: 'BB', villain: null })).toThrow(/Ungültiger Starthand-Spot/);
+  });
+});
 
 describe('buildChart', () => {
   const base = { id: 'vsOpen:100:UTG:ip', aggressive: 'AA', call: 'KK', close: {}, note: 'Lernsatz' };
@@ -71,6 +77,55 @@ describe.each(STACK_DEPTHS)('charts for %i BB', (stack) => {
         expect(later, `${group} vs ${openers[i + 1]} vs ${openers[i]}`).toBeGreaterThanOrEqual(earlier - 0.02);
       }
     }
+  });
+
+  it('keeps per-hand nesting across openers', () => {
+    const groups: Record<string, Position[]> = {
+      ip: ['UTG', 'UTG1', 'LJ', 'HJ', 'CO'],
+      sb: ['UTG', 'UTG1', 'LJ', 'HJ', 'CO', 'BTN'],
+      bb: ['UTG', 'UTG1', 'LJ', 'HJ', 'CO', 'BTN', 'SB'],
+    };
+    for (const [group, openers] of Object.entries(groups)) {
+      for (let i = 0; i < openers.length; i++) {
+        const earlier = continueRange(get(`vsOpen:${stack}:${openers[i]}:${group}`));
+        for (let j = i + 1; j < openers.length; j++) {
+          const later = continueRange(get(`vsOpen:${stack}:${openers[j]}:${group}`));
+          earlier.forEach((on, hand) => {
+            const msg = `${group}: ${handName(hand)} continues vs ${openers[i]} but not vs ${openers[j]}`;
+            if (on) expect(later[hand], msg).toBe(true);
+          });
+        }
+      }
+    }
+  });
+
+  // Known gaps in the curated vs3bet:*:*:blinds data (hand continues from an earlier seat, the later seat opens it, but folds to a 3-bet).
+  // Reported to the controller; the data is deliberately left untouched. Any NEW gap fails the test.
+  const KNOWN_BLINDS_NESTING_GAPS: Record<number, readonly string[]> = {
+    40: ['66 HJ>SB', '55 CO>BTN', '66 CO>SB', '55 CO>SB', 'A8s BTN>SB', 'A7s BTN>SB', 'QTs BTN>SB', 'ATo BTN>SB', '66 BTN>SB'],
+    100: ['KJo CO>SB', '76s CO>SB', '33 CO>SB', 'KJo BTN>SB', 'QJo BTN>SB', 'ATo BTN>SB', '76s BTN>SB', '65s BTN>SB', '33 BTN>SB', '22 BTN>SB'],
+  };
+
+  it('keeps per-hand nesting across 3-bet defenders where the later seat opens the hand', () => {
+    const heroes: Record<string, Position[]> = {
+      ip: ['UTG', 'UTG1', 'LJ', 'HJ', 'CO'],
+      blinds: ['UTG', 'UTG1', 'LJ', 'HJ', 'CO', 'BTN', 'SB'],
+    };
+    const gaps: string[] = [];
+    for (const [group, order] of Object.entries(heroes)) {
+      for (let i = 0; i < order.length; i++) {
+        const earlier = continueRange(get(`vs3bet:${stack}:${order[i]}:${group}`));
+        for (let j = i + 1; j < order.length; j++) {
+          const later = continueRange(get(`vs3bet:${stack}:${order[j]}:${group}`));
+          const opens = get(`rfi:${stack}:${order[j]}`).aggressive;
+          earlier.forEach((on, hand) => {
+            if (!on || !opens[hand] || later[hand]) return;
+            gaps.push(`${handName(hand)} ${order[i]}>${order[j]}`);
+          });
+        }
+      }
+    }
+    expect(gaps.sort()).toEqual([...KNOWN_BLINDS_NESTING_GAPS[stack]].sort());
   });
 
   it('defends at least as wide from the big blind as in position', () => {

@@ -1,5 +1,5 @@
-import type { HandClass } from '../cards';
-import { POSITIONS, type Position, seatOf } from '../positions';
+import { HAND_COUNT, type HandClass } from '../cards';
+import { POSITIONS, type Position, blindOf, seatOf } from '../positions';
 
 export type PreflopKind = 'rfi' | 'vsOpen' | 'vs3bet';
 export const PREFLOP_KINDS: readonly PreflopKind[] = ['rfi', 'vsOpen', 'vs3bet'];
@@ -34,14 +34,25 @@ function invalid(s: PreflopSituation): never {
   throw new Error(`Ungültiger Starthand-Spot: ${s.kind} ${s.stack} BB, ${s.hero} gegen ${s.villain ?? '–'}`);
 }
 
+export const PREFLOP_KIND_LABELS: Record<PreflopKind, string> = {
+  rfi: 'Open-Raise',
+  vsOpen: 'Gegen Open-Raise',
+  vs3bet: 'Gegen 3-Bet',
+};
+
+export const preflopCategoryKey = (s: PreflopSituation): string => `${s.kind}|${s.hero}|${s.stack}`;
+
 export function chartKeyFor(s: PreflopSituation): ChartKey {
+  if (!PREFLOP_KINDS.includes(s.kind) || !STACK_DEPTHS.includes(s.stack)) invalid(s);
   const hero = seatOf(s.hero);
+  if (hero < 0) invalid(s);
   if (s.kind === 'rfi') {
     if (s.villain !== null || hero > SB) invalid(s);
     return `rfi:${s.stack}:${s.hero}`;
   }
-  if (s.villain === null) invalid(s);
+  if (s.villain === null || s.villain === undefined) invalid(s);
   const villain = seatOf(s.villain);
+  if (villain < 0) invalid(s);
   if (s.kind === 'vsOpen') {
     if (villain > SB || hero <= villain) invalid(s);
     const group = hero === SB ? 'sb' : hero === BB ? 'bb' : 'ip';
@@ -50,6 +61,18 @@ export function chartKeyFor(s: PreflopSituation): ChartKey {
   if (hero > SB || villain <= hero) invalid(s);
   const group = isBlind(s.villain) ? 'blinds' : 'ip';
   return `vs3bet:${s.stack}:${s.hero}:${group}`;
+}
+
+export function isPreflopSpot(v: unknown): v is PreflopSpot {
+  if (typeof v !== 'object' || v === null) return false;
+  const s = v as PreflopSpot;
+  if (!Number.isInteger(s.hand) || s.hand < 0 || s.hand >= HAND_COUNT) return false;
+  try {
+    chartKeyFor(s);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function validSituations(): PreflopSituation[] {
@@ -66,6 +89,8 @@ export function validSituations(): PreflopSituation[] {
   return out;
 }
 
+export const preflopCategories = (): string[] => [...new Set(validSituations().map(preflopCategoryKey))].sort();
+
 export function expectedChartKeys(stack: StackDepth): ChartKey[] {
   const keys = new Set(validSituations().filter((s) => s.stack === stack).map(chartKeyFor));
   return [...keys].sort();
@@ -75,13 +100,34 @@ const openSize = (opener: Position) => (opener === 'SB' ? SB_OPEN_RAISE : OPEN_R
 const threeBetSize = (open: number, threeBettor: Position) =>
   round1(open * (isBlind(threeBettor) ? THREE_BET_BLINDS : THREE_BET_IP));
 
-export function sizesFor(s: PreflopSituation): { facing: number | null; aggressiveTo: number } {
+export type PreflopBets = {
+  heroPosted: number;
+  villainPosted: number | null;
+  facing: number | null;
+  aggressiveTo: number;
+  stackBehind: number;
+};
+
+export function betsFor(s: PreflopSituation): PreflopBets {
   chartKeyFor(s);
-  if (s.kind === 'rfi') return { facing: null, aggressiveTo: openSize(s.hero) };
+  const done = (heroPosted: number, villainPosted: number | null, aggressiveTo: number): PreflopBets => ({
+    heroPosted,
+    villainPosted,
+    facing: villainPosted,
+    aggressiveTo,
+    stackBehind: round1(s.stack - heroPosted),
+  });
+  if (s.kind === 'rfi') return done(blindOf(seatOf(s.hero)), null, openSize(s.hero));
   if (s.kind === 'vsOpen') {
     const open = openSize(s.villain!);
-    return { facing: open, aggressiveTo: threeBetSize(open, s.hero) };
+    return done(blindOf(seatOf(s.hero)), open, threeBetSize(open, s.hero));
   }
-  const threeBet = threeBetSize(openSize(s.hero), s.villain!);
-  return { facing: threeBet, aggressiveTo: s.stack === 40 ? 40 : round1(threeBet * FOUR_BET) };
+  const heroOpen = openSize(s.hero);
+  const threeBet = threeBetSize(heroOpen, s.villain!);
+  return done(heroOpen, threeBet, s.stack === 40 ? 40 : round1(threeBet * FOUR_BET));
+}
+
+export function sizesFor(s: PreflopSituation): { facing: number | null; aggressiveTo: number } {
+  const { facing, aggressiveTo } = betsFor(s);
+  return { facing, aggressiveTo };
 }

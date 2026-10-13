@@ -1,7 +1,16 @@
 import { COMBOS, HAND_COUNT } from '../cards';
 import type { Rng } from '../rng';
 import { type PreflopChart, chartFor, mainActionOf } from './charts';
-import { type PreflopKind, type PreflopSituation, type PreflopSpot, type StackDepth, validSituations } from './spots';
+import {
+  PREFLOP_KINDS,
+  type PreflopKind,
+  type PreflopSituation,
+  type PreflopSpot,
+  STACK_DEPTHS,
+  type StackDepth,
+  preflopCategoryKey,
+  validSituations,
+} from './spots';
 
 export type PreflopGeneratorOptions = {
   kinds?: readonly PreflopKind[];
@@ -14,7 +23,7 @@ const DEFAULT_RANDOM_SHARE = 0.15;
 const BOUNDARY_WEIGHT = 6;
 const SIZE = 13;
 
-export const preflopCategoryKey = (s: PreflopSituation): string => `${s.kind}|${s.hero}|${s.stack}`;
+export { preflopCategoryKey };
 
 export function boundaryHands(chart: PreflopChart): boolean[] {
   return Array.from({ length: HAND_COUNT }, (_, hand) => {
@@ -49,8 +58,10 @@ function pickWeighted<T>(items: readonly T[], weight: (item: T) => number, rng: 
 }
 
 export function generatePreflopSpot(rng: Rng, options: PreflopGeneratorOptions = {}): PreflopSpot {
-  const kinds = options.kinds ?? ['rfi', 'vsOpen', 'vs3bet'];
-  const stacks = options.stacks ?? [40, 100];
+  const kinds = options.kinds ?? PREFLOP_KINDS;
+  const stacks = options.stacks ?? STACK_DEPTHS;
+  const randomShare = options.randomShare ?? DEFAULT_RANDOM_SHARE;
+  if (!Number.isFinite(randomShare) || randomShare < 0 || randomShare > 1) throw new Error(`Ungültiger Zufallsanteil: ${randomShare}`);
   const groups = new Map<string, PreflopSituation[]>();
   for (const s of validSituations()) {
     if (!kinds.includes(s.kind) || !stacks.includes(s.stack)) continue;
@@ -67,7 +78,7 @@ export function generatePreflopSpot(rng: Rng, options: PreflopGeneratorOptions =
 
   const chart = chartFor(situation);
   const boundary = boundaryHands(chart);
-  const uniform = rng() < (options.randomShare ?? DEFAULT_RANDOM_SHARE);
+  const uniform = rng() < randomShare;
   const hands = Array.from({ length: HAND_COUNT }, (_, h) => h);
   const hand = pickWeighted(hands, (h) => COMBOS[h].length * (!uniform && boundary[h] ? BOUNDARY_WEIGHT : 1), rng);
   return { ...situation, hand };

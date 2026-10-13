@@ -7,6 +7,8 @@ import {
   type PreflopAction,
   type PreflopKind,
   type PreflopSituation,
+  PREFLOP_KINDS,
+  STACK_DEPTHS,
   type StackDepth,
   aggressiveActionOf,
   allowedActions,
@@ -31,8 +33,6 @@ export type PreflopChart = {
   note: string;
 };
 
-const KINDS: readonly string[] = ['rfi', 'vsOpen', 'vs3bet'];
-
 function mainAction(kind: PreflopKind, aggressive: readonly boolean[], call: readonly boolean[], hand: HandClass): PreflopAction {
   if (aggressive[hand]) return aggressiveActionOf(kind);
   return call[hand] ? 'call' : 'fold';
@@ -40,10 +40,10 @@ function mainAction(kind: PreflopKind, aggressive: readonly boolean[], call: rea
 
 export function buildChart(def: PreflopChartDef): PreflopChart {
   const [kindText, stackText] = def.id.split(':');
-  if (!KINDS.includes(kindText)) throw new Error(`Unbekannter Chart-Typ: ${def.id}`);
+  if (!(PREFLOP_KINDS as readonly string[]).includes(kindText)) throw new Error(`Unbekannter Chart-Typ: ${def.id}`);
   const kind = kindText as PreflopKind;
-  const stack = Number(stackText);
-  if (stack !== 40 && stack !== 100) throw new Error(`Unbekannte Stacktiefe: ${def.id}`);
+  const stack = Number(stackText) as StackDepth;
+  if (!(STACK_DEPTHS as readonly number[]).includes(stack)) throw new Error(`Unbekannte Stacktiefe: ${def.id}`);
   const aggressive = parseRange(def.aggressive);
   const call = parseRange(def.call);
   if (kind === 'rfi' && call.some(Boolean)) throw new Error(`Ein Open-Raise-Chart hat keine Calls: ${def.id}`);

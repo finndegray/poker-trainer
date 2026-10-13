@@ -60,8 +60,8 @@ function comparisonPlan(spot: PreflopSpot): Plan {
   }
   const group = chartKeyFor(spot).split(':')[3];
   if (kind === 'vsOpen') {
-    const hero: Position = group === 'ip' ? 'BTN' : group === 'sb' ? 'SB' : 'BB';
-    const lastOpener: Position = group === 'ip' ? 'CO' : group === 'sb' ? 'BTN' : 'SB';
+    const hero: Position = group === 'ip' ? spot.hero : group === 'sb' ? 'SB' : 'BB';
+    const lastOpener: Position = group === 'ip' ? POSITIONS[seatOf(spot.hero) - 1] : group === 'sb' ? 'BTN' : 'SB';
     const label = group === 'ip' ? 'in Position' : group === 'sb' ? 'im SB' : 'im BB';
     return {
       axis: 'opener',

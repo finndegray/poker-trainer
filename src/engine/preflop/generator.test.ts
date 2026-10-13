@@ -58,6 +58,15 @@ describe('generatePreflopSpot', () => {
     expect(hits / 2000).toBeGreaterThan(0.2);
   });
 
+  it('rejects an invalid random share', () => {
+    const rng = mulberry32(1);
+    for (const bad of [-0.1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => generatePreflopSpot(rng, { randomShare: bad })).toThrow(`Ungültiger Zufallsanteil: ${bad}`);
+    }
+    expect(() => generatePreflopSpot(rng, { randomShare: 0 })).not.toThrow();
+    expect(() => generatePreflopSpot(rng, { randomShare: 1 })).not.toThrow();
+  });
+
   it('rejects invalid weights', () => {
     const rng = mulberry32(1);
     expect(() => generatePreflopSpot(rng, { categoryWeights: new Map([['rfi|UTG|100', -1]]) })).toThrow('Ungültiges Gewicht');

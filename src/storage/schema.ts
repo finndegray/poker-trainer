@@ -5,6 +5,17 @@ import { DAILY_SPOT_COUNT, type DailyResult } from '../game/daily';
 import type { RunState } from '../game/endphase-run';
 import { type PreflopAction, type PreflopSpot, allowedActions, isPreflopSpot } from '../engine/preflop/spots';
 import { type PreflopFilter, isPreflopFilter } from '../game/preflop-filter';
+import {
+  MAX_RETRAINING_DONE,
+  MAX_RETRAINING_ENTRIES,
+  MAX_RETRAINING_SYNCED,
+  RETRAINING_CLEAR_STREAK,
+  type RetrainingEntry,
+  type RetrainingSpot,
+  type RetrainingState,
+  byPlayedAt,
+  copyRetrainingSpot,
+} from '../game/retraining';
 import type { DecisionRecord, PreflopRecord, PushFoldRecord } from '../game/stats';
 
 export const SCHEMA_VERSION = 1;
@@ -39,6 +50,8 @@ export type SaveState = {
   activeRun: RunState | null;
   /** Added after the first release; saves without the key load as `null`. */
   dailyProgress: DailyProgress | null;
+  /** Added with the retraining (Plan 9): only written once a spot is queued or the switch is used. */
+  retraining?: RetrainingState;
 };
 
 export type SaveFormatErrorCode = 'corrupt' | 'newer-version';
@@ -147,6 +160,53 @@ function isDailyProgress(v: unknown): boolean {
     && isInt(v.correct) && (v.correct as number) <= (v.index as number) && isInt(v.elapsedMs);
 }
 
+const PLAYED_AT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+const MAX_ID_LENGTH = 200;
+const isId = (v: unknown): v is string => isString(v) && v.length > 0 && v.length <= MAX_ID_LENGTH;
+
+/** A queued spot must be one the trainings can deal and grade. */
+export const isRetrainingSpot = (r: RetrainingSpot): boolean =>
+  r.game === 'pushfold' ? isSpot(r.spot) : r.game === 'preflop' && isPreflopSpot(r.spot);
+
+function readRetrainingEntry(v: unknown): RetrainingEntry | null {
+  if (!isObject(v) || !isId(v.key) || !isId(v.tournamentId) || !isString(v.playedAt) || !PLAYED_AT.test(v.playedAt)) return null;
+  if (!isIntIn(v.streak, 0, RETRAINING_CLEAR_STREAK - 1)) return null;
+  if ((v.game !== 'pushfold' && v.game !== 'preflop') || !isRetrainingSpot(v as RetrainingSpot)) return null;
+  return { key: v.key, tournamentId: v.tournamentId, playedAt: v.playedAt, streak: v.streak, ...copyRetrainingSpot(v as RetrainingSpot) };
+}
+
+const idList = (v: unknown, max: number): string[] => [...new Set(Array.isArray(v) ? v.filter(isId) : [])].slice(-max);
+
+/**
+ * Additive field, never fatal: the queue is a copy of the archive's preflop errors. Invalid entries are dropped one by
+ * one; if any was dropped, `synced` is cleared so the next start feeds the archive in again (done keys keep cleared
+ * spots out). A broken field as a whole reads as missing and is rebuilt the same way.
+ */
+export function readRetraining(raw: unknown): RetrainingState | null {
+  try {
+    if (!isObject(raw)) return null;
+    const list = Array.isArray(raw.entries) ? raw.entries : [];
+    const entries: RetrainingEntry[] = [];
+    const keys = new Set<string>();
+    for (const v of list) {
+      const entry = readRetrainingEntry(v);
+      if (entry && !keys.has(entry.key)) {
+        keys.add(entry.key);
+        entries.push(entry);
+      }
+    }
+    const intact = Array.isArray(raw.entries) && entries.length === list.length;
+    return {
+      ...(raw.off === true ? { off: true } : {}),
+      entries: entries.sort(byPlayedAt).slice(-MAX_RETRAINING_ENTRIES),
+      done: idList(raw.done, MAX_RETRAINING_DONE).filter((k) => !keys.has(k)),
+      synced: intact ? idList(raw.synced, MAX_RETRAINING_SYNCED) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 function fail(reason: string, code: SaveFormatErrorCode = 'corrupt'): never {
   throw new SaveFormatError(`Spielstand nicht lesbar: ${reason}`, code);
 }
@@ -173,6 +233,8 @@ export function migrate(raw: unknown): SaveState {
   // Additive field: saves written before it existed have no key at all.
   const progress = 'dailyProgress' in raw ? raw.dailyProgress : null;
   if (progress !== null && !isDailyProgress(progress)) fail('Daily-Fortschritt ungültig');
+  // Additive field (Plan 9): missing in all older saves; unreadable parts are dropped, never fatal.
+  const retraining = 'retraining' in raw ? readRetraining(raw.retraining) : null;
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -184,6 +246,7 @@ export function migrate(raw: unknown): SaveState {
     bestRun: raw.bestRun as RunSummary | null,
     activeRun: raw.activeRun === null ? null : { ...(raw.activeRun as RunState) },
     dailyProgress: progress === null ? null : { ...(progress as DailyProgress) },
+    ...(retraining ? { retraining } : {}),
   };
 }
 

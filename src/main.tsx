@@ -3,11 +3,14 @@ import { type Root, createRoot } from 'react-dom/client';
 import { getPushFoldData } from './app/data';
 import { type GameStore, createGameStore } from './app/game-store';
 import { type Persistence, browserEnv, installFlushOnHide, openPersistence } from './app/persistence';
+import { createReviewStore } from './app/review-store';
 import { createUpdatePolicy } from './app/update-policy';
 import { registerSW } from 'virtual:pwa-register';
 import { mulberry32 } from './engine/rng';
+import { indexedDbReviewBackend, memoryReviewBackend } from './review/archive';
 import { App } from './ui/App';
 import { GameProvider } from './ui/GameContext';
+import { ReviewProvider } from './ui/ReviewContext';
 import { browserAudioFactory, createSoundPlayer } from './ui/sound';
 import './ui/theme.css';
 
@@ -63,7 +66,18 @@ async function bootstrap(): Promise<void> {
   });
   const ready = store;
   if (updateNotice) ready.setUpdateAvailable();
-  opened.onWriterAcquired((fresh) => ready.adoptSavedState(fresh));
+  // The hand archive lives in its own database and follows the save's storage mode and writer lock.
+  const review = createReviewStore({
+    backend: opened.info.mode === 'indexeddb' ? indexedDbReviewBackend() : memoryReviewBackend(),
+    data: getPushFoldData(),
+    canWrite: () => opened.canWrite(),
+    readOnly: opened.info.readOnly,
+  });
+  void review.load();
+  opened.onWriterAcquired((fresh) => {
+    ready.adoptSavedState(fresh);
+    review.refreshAccess().catch(logError);
+  });
   document.addEventListener('visibilitychange', () => {
     const visible = document.visibilityState === 'visible';
     ready.onVisibilityChange(visible);
@@ -79,7 +93,9 @@ async function bootstrap(): Promise<void> {
   appRoot().render(
     <StrictMode>
       <GameProvider store={ready}>
-        <App onApplyUpdate={applyUpdate} sound={sound} />
+        <ReviewProvider store={review}>
+          <App onApplyUpdate={applyUpdate} sound={sound} />
+        </ReviewProvider>
       </GameProvider>
     </StrictMode>,
   );

@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import bounty from '../../review/fixtures/bounty.txt?raw';
+import { memoryReviewBackend, tournamentKey } from '../../review/archive';
+import { EXPORT_KEY, withArchive } from '../../review/export';
 import { emptyState, serialize } from '../../storage/schema';
 import { downloadText } from '../download';
 import { renderWithStore } from '../test-utils';
@@ -22,8 +25,9 @@ describe('SettingsScreen', () => {
     expect(store.getSnapshot().save.profile.soundOn).toBe(false);
   });
 
-  it('exports the save as a dated JSON file', () => {
-    renderWithStore(<SettingsScreen onBack={() => {}} />);
+  it('exports the save as a dated JSON file', async () => {
+    const { loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(() => loaded);
     fireEvent.click(screen.getByRole('button', { name: 'Exportieren' }));
     expect(downloadText).toHaveBeenCalledWith(expect.stringMatching(/^poker-trainer-spielstand-\d{4}-\d{2}-\d{2}\.json$/), serialize(emptyState()));
   });
@@ -110,5 +114,100 @@ describe('SettingsScreen', () => {
     expect(await screen.findByText('Keine Sicherungen vorhanden.')).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Importieren' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('Import ist nur in dem Tab möglich, der deinen Fortschritt speichert.')).toBeTruthy();
+  });
+});
+
+describe('SettingsScreen with the hand archive', () => {
+  it('adds the archive to the export once hands are archived', async () => {
+    const { review, loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(async () => {
+      await loaded;
+      await review.importText(bounty);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Exportieren' }));
+    await waitFor(() => expect(downloadText).toHaveBeenCalledTimes(1));
+    const text = vi.mocked(downloadText).mock.calls[0][1];
+    expect(JSON.parse(text)[EXPORT_KEY].hands).toHaveLength(1);
+    expect(text.startsWith(serialize(emptyState()).slice(0, -1))).toBe(true);
+  });
+
+  it('merges the archive part of an imported file', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { review, loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(() => loaded);
+    const part = { reviewSchemaVersion: 1 as const, tournaments: [{ id: '318083464', name: 'Bounty Hunters $2.50', kind: 'normal' as const }], hands: [{ id: 'TM6532114653', tournamentId: '318083464', raw: bounty }] };
+    fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(withArchive(serialize(emptyState()), part))] } });
+    expect(await screen.findByText('Spielstand importiert. Hand-Archiv: 1 Hand ergänzt, 0 schon vorhanden.')).toBeTruthy();
+    expect(review.getSnapshot().tournaments[0]).toMatchObject({ id: '318083464', kind: 'normal' });
+  });
+
+  it('imports nothing when the archive part is broken', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { store, create } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    const broken = serialize({ ...emptyState(), profile: { xp: 5, combo: 0, soundOn: true } }).slice(0, -1) + ',"reviewArchive":{"reviewSchemaVersion":1}}';
+    fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(broken)] } });
+    expect(await screen.findByText('Import fehlgeschlagen: Hand-Archiv in der Datei ist nicht lesbar')).toBeTruthy();
+    expect(store.getSnapshot().save.profile.xp).toBe(0);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('says "Hände" for several hands', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(() => loaded);
+    const hands = bounty.split(/\n(?=Poker Hand #)/);
+    const raws = [hands[0], hands[0].replace(/TM6532114653/g, 'TM9999999991')];
+    const part = { reviewSchemaVersion: 1 as const, tournaments: [{ id: '318083464', name: 'Bounty Hunters $2.50', kind: 'normal' as const }], hands: raws.map((raw, i) => ({ id: `h${i}`, tournamentId: '318083464', raw })) };
+    fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(withArchive(serialize(emptyState()), part))] } });
+    expect(await screen.findByText(/2 Hände ergänzt/)).toBeTruthy();
+  });
+
+  it('keeps the export enabled once the archive has loaded', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const inner = memoryReviewBackend();
+    const reviewBackend = { ...inner, keys: async () => { await gate; return inner.keys(); } };
+    const { loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />, { reviewBackend });
+    await act(async () => {
+      release();
+      await loaded;
+    });
+    expect((screen.getByRole('button', { name: 'Exportieren' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('exports the save alone while the archive is still loading', async () => {
+    const gate = new Promise<void>(() => {});
+    const inner = memoryReviewBackend();
+    const reviewBackend = { ...inner, keys: async () => { await gate; return inner.keys(); } };
+    renderWithStore(<SettingsScreen onBack={() => {}} />, { reviewBackend });
+    const button = screen.getByRole('button', { name: 'Exportieren' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(downloadText).toHaveBeenCalledWith(expect.any(String), serialize(emptyState())));
+    expect(await screen.findByText('Export erstellt. Das Hand-Archiv wurde noch nicht geladen und fehlt darin.')).toBeTruthy();
+  });
+
+  it('reports unreadable archive entries left out of the export', async () => {
+    const reviewBackend = memoryReviewBackend({ [tournamentKey('1')]: 'kaputt', [tournamentKey('2')]: 'kaputt' });
+    const { review, loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />, { reviewBackend });
+    await act(async () => {
+      await loaded;
+      await review.importText(bounty);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Exportieren' }));
+    expect(await screen.findByText('Export erstellt (2 unlesbare Archiv-Einträge nicht exportiert).')).toBeTruthy();
+  });
+
+  it('does not mention unreadable entries when there are none', async () => {
+    const { review, loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(async () => {
+      await loaded;
+      await review.importText(bounty);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Exportieren' }));
+    await waitFor(() => expect(downloadText).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/unlesbar/)).toBeNull();
   });
 });

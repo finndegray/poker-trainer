@@ -98,6 +98,7 @@ describe('openPersistence', () => {
     const backend = memoryBackend();
     const p = await openPersistence(env({ createBackend: () => backend, locks: lockTaken }));
     expect(p.info.otherTabActive).toBe(true);
+    expect(p.canWrite()).toBe(false);
     p.save(withXp(99));
     await p.flush();
     expect(backend.dump()[SAVE_KEY]).toBeUndefined();
@@ -106,6 +107,7 @@ describe('openPersistence', () => {
   it('creates, lists, reads and removes backups when writable', async () => {
     const backend = memoryBackend();
     const p = await openPersistence(env({ createBackend: () => backend, locks: lockAvailable }));
+    expect(p.canWrite()).toBe(true);
     const key = await p.backups.create('{"stand":1}');
     expect(await p.backups.list()).toEqual([key]);
     expect(await p.backups.read(key)).toBe('{"stand":1}');
@@ -125,6 +127,7 @@ describe('openPersistence', () => {
     const backend = memoryBackend({ [SAVE_KEY]: raw });
     const p = await openPersistence(env({ createBackend: () => backend, locks: lockAvailable }));
     expect(p.info.readOnly).toBe(true);
+    expect(p.canWrite()).toBe(false);
     p.save(withXp(1));
     await p.flush();
     expect(backend.dump()[SAVE_KEY]).toBe(raw);
@@ -248,6 +251,7 @@ describe('writer lock hand-over', () => {
       grant();
     });
     expect(fresh.profile.xp).toBe(25);
+    expect(p.canWrite()).toBe(true);
     p.save(withXp(30));
     await p.flush();
     expect((await loadState(backend, now())).state.profile.xp).toBe(30);

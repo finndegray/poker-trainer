@@ -19,9 +19,17 @@ function behindText(n: number): string {
   return `noch ${n} Spieler hinter dir`;
 }
 
-type ViewProps = { model: TableModel; cards: readonly [Card, Card]; situation: string; info: string };
+export type TableViewProps = {
+  model: TableModel;
+  /** The hero's cards; empty when unknown. */
+  cards: readonly Card[];
+  situation: string;
+  info: string;
+  /** Community cards, shown in the middle (hand review). */
+  board?: readonly Card[];
+};
 
-function TableView({ model, cards, situation, info }: ViewProps) {
+export function TableView({ model, cards, situation, info, board = [] }: TableViewProps) {
   // High card first, the way players read their hand.
   const shown = [...cards].sort((a, b) => rankOf(b) - rankOf(a));
   return (
@@ -29,12 +37,21 @@ function TableView({ model, cards, situation, info }: ViewProps) {
       <div className="poker-table__stage">
         <div className="poker-table__felt">
           <div className="poker-table__pot">Pot {formatBb(model.potBb)} BB</div>
+          {board.length > 0 && (
+            <div className="poker-table__board" aria-label="Board">
+              {board.map((card) => (
+                <PlayingCard key={card} card={card} />
+              ))}
+            </div>
+          )}
           <div className="poker-table__situation">{situation}</div>
-          <div className="poker-table__cards">
-            {shown.map((card, i) => (
-              <PlayingCard key={`${card}-${i}`} card={card} delayMs={i * 120} />
-            ))}
-          </div>
+          {shown.length > 0 && (
+            <div className="poker-table__cards">
+              {shown.map((card, i) => (
+                <PlayingCard key={`${card}-${i}`} card={card} delayMs={i * 120} />
+              ))}
+            </div>
+          )}
         </div>
         {model.seats.map((seat) => (
           <div

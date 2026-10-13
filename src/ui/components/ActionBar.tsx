@@ -19,7 +19,8 @@ type ChoiceBarProps<A extends string> = {
 /** Taps on "Weiter" right after answering are ignored, so a double tap cannot skip the feedback. */
 export const NEXT_TAP_GUARD_MS = 300;
 
-function isTypingTarget(target: EventTarget | null): boolean {
+/** Shortcuts never fire while the player types into a field. */
+export function isTypingTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
     (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))

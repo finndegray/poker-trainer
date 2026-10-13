@@ -37,6 +37,21 @@
   color: var(--cream-muted);
 }
 
+.poker-table__board {
+  display: flex;
+  gap: 4px;
+}
+
+.poker-table__board .playing-card {
+  width: 34px;
+  height: 48px;
+}
+
+.poker-table__board .playing-card .playing-card__rank,
+.poker-table__board .playing-card .playing-card__suit {
+  font-size: 14px;
+}
+
 .poker-table__cards {
   display: flex;
   gap: 8px;

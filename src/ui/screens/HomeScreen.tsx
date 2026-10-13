@@ -4,7 +4,7 @@ import { StatusBar } from '../components/StatusBar';
 import { useGame } from '../GameContext';
 import './screens.css';
 
-export type Screen = 'home' | 'training' | 'preflop' | 'daily' | 'run' | 'stats' | 'settings';
+export type Screen = 'home' | 'training' | 'preflop' | 'daily' | 'run' | 'review' | 'stats' | 'settings';
 
 type Tile = { title: string; text: string; button: string; target: Screen; locked: boolean };
 
@@ -39,6 +39,14 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
       button: runRunning ? 'Run fortsetzen' : 'Run starten',
       target: 'run',
       locked,
+    },
+    {
+      title: 'Hand-Review',
+      text: 'GGPoker-Hände importieren und deine Preflop-Entscheidungen prüfen',
+      button: 'Hände prüfen',
+      target: 'review',
+      // Viewing the archive stays possible in read-only mode; the import itself is blocked there.
+      locked: false,
     },
     { title: 'Statistik', text: 'Trefferquote, Schwachstellen und Verlauf', button: 'Statistik ansehen', target: 'stats', locked: false },
     { title: 'Einstellungen', text: 'Sound, Export/Import und Sicherungen', button: 'Einstellungen öffnen', target: 'settings', locked: false },

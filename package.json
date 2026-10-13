@@ -1,0 +1,22 @@
+{
+  "name": "poker-trainer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "data:equity": "tsx scripts/compute-equity.ts",
+    "data:pushfold": "tsx scripts/build-pushfold.ts",
+    "data:print": "tsx scripts/print-ranges.ts",
+    "check:portability": "node scripts/check-portability.mjs ."
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}

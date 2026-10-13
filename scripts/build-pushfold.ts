@@ -11,7 +11,7 @@ import { solveSpot } from './lib/nash';
 const MAX_EXPLOITABILITY = 0.05;
 const MAX_HAND_REGRET = 0.1;
 const args = parseArgs(process.argv.slice(2));
-const iterations = Number(args.iterations ?? 500);
+const iterations = Number(args.iterations ?? 20000);
 
 const equity = loadEquity();
 const compat = compatMatrix();

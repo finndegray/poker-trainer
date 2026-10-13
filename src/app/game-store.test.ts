@@ -604,6 +604,8 @@ describe('starthand training', () => {
     const { store } = setup({ readOnly: true });
     expect(() => store.startPreflop()).toThrow('Im Nur-Lesen-Modus nicht möglich');
     expect(() => store.nextPreflopSpot()).toThrow('Im Nur-Lesen-Modus nicht möglich');
+    expect(() => store.setPreflopFilter({ kind: 'rfi', stack: 40 })).toThrow('Im Nur-Lesen-Modus nicht möglich');
+    expect(store.getSnapshot().save.profile.preflopFilter).toBeUndefined();
   });
 
   it('celebrates a rank-up from a starthand decision', () => {

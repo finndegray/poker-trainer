@@ -393,6 +393,7 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
       return result;
     },
     setPreflopFilter(filter) {
+      assertPlayable();
       if (!isPreflopFilter(filter)) throw new Error('Ungültiger Starthand-Filter');
       if (samePreflopFilter(filter, preflopFilterOf(snapshot.save.profile))) return;
       const preflopFilter: PreflopFilter = { kind: filter.kind, stack: filter.stack };

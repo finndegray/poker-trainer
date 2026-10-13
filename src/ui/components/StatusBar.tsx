@@ -26,9 +26,15 @@ export function StatusBar({ status, xp }: { status: SessionStatus; xp: number })
       </div>
       <div className="status-bar__row status-bar__meta">
         <span>{rank.next ? `${xpFormat.format(rank.next.minXp - xp)} XP bis ${rank.next.name}` : 'Höchster Rang erreicht'}</span>
-        <span>
-          Heute {dayProgress.count}/{dayProgress.target}
-        </span>
+        {dayProgress.count >= dayProgress.target ? (
+          <span className="status-bar__goal" title={`Mindestens ${dayProgress.target} Spots gespielt – der Tag zählt für die Streak`}>
+            Tagesziel erreicht ✓ · {dayProgress.count} Spots
+          </span>
+        ) : (
+          <span title={`Ab ${dayProgress.target} Spots zählt der Tag für die Streak`}>
+            Heute {dayProgress.count}/{dayProgress.target}
+          </span>
+        )}
       </div>
     </header>
   );

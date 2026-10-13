@@ -19,6 +19,19 @@ describe('StatusBar', () => {
     expect(screen.getByRole('progressbar', { name: 'Fortschritt zum nächsten Rang' }).getAttribute('aria-valuenow')).toBe('50');
   });
 
+  it('shows the reached daily goal instead of a count above the target', () => {
+    const state = { ...emptyState(), days: { '2026-10-13': 23 } };
+    render(<StatusBar status={statusOf(state, now)} xp={0} />);
+    expect(screen.getByText('Tagesziel erreicht ✓ · 23 Spots')).toBeTruthy();
+    expect(screen.queryByText(/23\/20/)).toBeNull();
+  });
+
+  it('switches to the reached goal exactly at the target', () => {
+    const state = { ...emptyState(), days: { '2026-10-13': 20 } };
+    render(<StatusBar status={statusOf(state, now)} xp={0} />);
+    expect(screen.getByText('Tagesziel erreicht ✓ · 20 Spots')).toBeTruthy();
+  });
+
   it('takes the streak tooltip from the daily target', () => {
     const status = statusOf(emptyState(), now);
     render(<StatusBar status={{ ...status, dayProgress: { ...status.dayProgress, target: 25 } }} xp={0} />);

@@ -13,6 +13,7 @@ Ein persönlicher Trainer, mit dem Florian seine Entscheidungen in **Online-MTTs
 | 1 – Push/Fold | Kurze Stacks (1–20 BB): Open-Shove und Call vs. Shove | **diese Spec** |
 | 2 – ICM | Bubble und Final Table: Push/Fold unter Auszahlungsdruck | später, eigene Spec |
 | 3 – Postflop | Pot Odds/Equity unter Zeitdruck, später C-Bets und Draws | später, eigene Spec |
+| 5 – Hand-Review | GGPoker-Hand-Historie importieren und jede Entscheidung bewerten (gut/schlecht und warum); Preflop über die vorhandenen Push/Fold-Daten und die Starthand-Charts, Postflop-Ansatz offen | ganz zuletzt, eigene Spec (Wunsch des Nutzers vom 2026-10-13) |
 | 4 – Starthände (tiefe Stacks) | Open-Raise (RFI), Reaktion auf Open-Raise (3-Bet/Call/Fold), Reaktion auf 3-Bet (4-Bet/Call/Fold) bei ca. 40 und 100 BB; Grundlage sind kuratierte Standard-Charts (kein Solver-Ergebnis, im Trainer so gekennzeichnet) | nach Plan 4, eigene Spec (Wunsch des Nutzers vom 2026-10-13) |
 
 Gamification (XP, Ränge, Streak, Daily Challenge, Statistiken) gilt modulübergreifend und wird in Version 1 vollständig angelegt.

@@ -1,13 +1,37 @@
+import type { Notice } from '../../app/game-store';
 import type { PersistenceInfo } from '../../app/persistence';
 import { localDateKey } from '../../game/streak';
 import { downloadText } from '../download';
 
-type Props = { info: PersistenceInfo; saveError: string | null; now: () => Date };
+type Props = {
+  info: PersistenceInfo;
+  saveError: string | null;
+  now: () => Date;
+  notice: Notice | null;
+  onDismissNotice: () => void;
+  onApplyUpdate?: () => Promise<void>;
+};
 
-export function Notices({ info, saveError, now }: Props) {
+export function Notices({ info, saveError, now, notice, onDismissNotice, onApplyUpdate }: Props) {
   const backup = info.corruptBackup;
   return (
     <div className="notices">
+      {notice === 'writer-acquired' && (
+        <div className="notice">
+          <p>Der andere Tab wurde geschlossen. Ab jetzt speichert dieser Tab deinen Fortschritt.</p>
+          <button type="button" className="btn btn--gold" onClick={onDismissNotice}>
+            OK
+          </button>
+        </div>
+      )}
+      {notice === 'update-available' && (
+        <div className="notice">
+          <p>Eine neue Version ist verfügbar.</p>
+          <button type="button" className="btn btn--gold" onClick={() => void onApplyUpdate?.()}>
+            Jetzt aktualisieren
+          </button>
+        </div>
+      )}
       {info.readOnly && (
         <p className="notice notice--warning">
           Dieser Spielstand stammt aus einer neueren Version der App. Bitte lade die Seite neu, damit die App sich

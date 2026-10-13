@@ -3,6 +3,10 @@ export function downloadText(filename: string, text: string): void {
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
+  // Some browsers (Firefox, older Safari) only download from links that are in the document.
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  // Revoking right away can cancel the download before the browser has read the blob.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

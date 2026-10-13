@@ -52,23 +52,23 @@
 }
 
 .cell--aggressive {
-  background: #2f8f5b;
-  color: #f3e9c6;
+  background: var(--cell-push-bg);
+  color: var(--cell-push-fg);
 }
 
 .cell--close-aggressive {
-  background: #8a7a2e;
-  color: #fff8e0;
+  background: var(--cell-close-push-bg);
+  color: var(--cell-close-push-fg);
 }
 
 .cell--close-fold {
-  background: #6b5a3a;
-  color: #f3e9c6;
+  background: var(--cell-close-fold-bg);
+  color: var(--cell-close-fold-fg);
 }
 
 .cell--fold {
-  background: #1d2b24;
-  color: #8fa397;
+  background: var(--cell-fold-bg);
+  color: var(--cell-fold-fg);
 }
 
 .range-chart {

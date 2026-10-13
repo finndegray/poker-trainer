@@ -10,7 +10,7 @@ export function StatusBar({ status, xp }: { status: SessionStatus; xp: number })
     <header className="status-bar panel">
       <div className="status-bar__row">
         <span className="status-bar__rank">{rank.name}</span>
-        <span className="status-bar__streak" title="Tage in Folge mit mindestens 20 Spots">
+        <span className="status-bar__streak" title={`Tage in Folge mit mindestens ${dayProgress.target} Spots`}>
           Streak {streak} {streak === 1 ? 'Tag' : 'Tage'}
         </span>
       </div>

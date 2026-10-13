@@ -11,9 +11,15 @@ export function TrainingScreen({ onBack }: { onBack: () => void }) {
   const store = useGameStore();
   const game = useGame();
 
+  // StrictMode-safe: a second immediate call only restarts the timer of the dealt spot.
   useEffect(() => {
-    if (!store.getSnapshot().current) store.nextTrainingSpot();
+    store.resumeTraining();
   }, [store]);
+  // The spot is cleared when this tab takes over the state of a closed tab.
+  const hasSpot = game.current !== null;
+  useEffect(() => {
+    if (!store.getSnapshot().current) store.resumeTraining();
+  }, [store, hasSpot]);
 
   const onAction = useCallback((action: Action) => {
     store.answer(action);

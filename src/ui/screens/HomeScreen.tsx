@@ -8,7 +8,7 @@ export function HomeScreen({ onStartTraining }: { onStartTraining: () => void })
   const game = useGame();
   return (
     <>
-      <StatusBar status={game.status} xp={game.save.profile.xp} />
+      {!game.info.readOnly && <StatusBar status={game.status} xp={game.save.profile.xp} />}
       <section className="panel home__hero">
         <h2 className="home__heading">Push/Fold-Training</h2>
         <p className="muted">

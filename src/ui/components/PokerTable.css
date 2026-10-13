@@ -103,7 +103,8 @@
 }
 
 .seat--folded {
-  opacity: 0.4;
+  color: rgba(243, 233, 198, 0.4);
+  border-color: rgba(243, 233, 198, 0.12);
 }
 
 .poker-table__info {

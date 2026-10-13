@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ActionBar } from './ActionBar';
 
 describe('ActionBar', () => {
@@ -51,5 +51,49 @@ describe('ActionBar', () => {
     rerender(<ActionBar kind="open" answered onAction={onAction} onNext={onNext} />);
     fireEvent.keyDown(screen.getByRole('button', { name: /Weiter/ }), { key: 'Enter' });
     expect(onNext).not.toHaveBeenCalled();
+  });
+
+  it('names the buttons without the key hint and announces the shortcuts', () => {
+    const { rerender } = render(<ActionBar kind="open" answered={false} onAction={() => {}} onNext={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Fold' }).getAttribute('aria-keyshortcuts')).toBe('F');
+    expect(screen.getByRole('button', { name: 'All-in' }).getAttribute('aria-keyshortcuts')).toBe('A');
+    rerender(<ActionBar kind="open" answered onAction={() => {}} onNext={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Weiter' }).getAttribute('aria-keyshortcuts')).toBe('Space Enter');
+  });
+
+  describe('after answering', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('focuses "Weiter" and ignores taps on it for 300 ms', () => {
+      vi.useFakeTimers();
+      const onNext = vi.fn();
+      const { rerender } = render(<ActionBar kind="open" answered={false} onAction={() => {}} onNext={onNext} />);
+      rerender(<ActionBar kind="open" answered onAction={() => {}} onNext={onNext} />);
+      const next = screen.getByRole('button', { name: 'Weiter' });
+      expect(document.activeElement).toBe(next);
+      fireEvent.click(next, { detail: 1 });
+      act(() => {
+        vi.advanceTimersByTime(299);
+      });
+      fireEvent.click(next, { detail: 2 });
+      expect(onNext).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      fireEvent.click(next, { detail: 1 });
+      expect(onNext).toHaveBeenCalledOnce();
+    });
+
+    it('lets keyboard activation through right away', () => {
+      vi.useFakeTimers();
+      const onNext = vi.fn();
+      render(<ActionBar kind="open" answered onAction={() => {}} onNext={onNext} />);
+      // Space or Enter on a focused button fire a click with detail 0.
+      fireEvent.click(screen.getByRole('button', { name: 'Weiter' }), { detail: 0 });
+      fireEvent.keyDown(window, { key: ' ' });
+      expect(onNext).toHaveBeenCalledTimes(2);
+    });
   });
 });

@@ -15,7 +15,14 @@ describe('StatusBar', () => {
     expect(screen.getByText('750 XP bis Grinder')).toBeTruthy();
     expect(screen.getByText('Streak 1 Tag')).toBeTruthy();
     expect(screen.getByText('Heute 7/20')).toBeTruthy();
+    expect(screen.getByTitle('Tage in Folge mit mindestens 20 Spots')).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Fortschritt zum nächsten Rang' }).getAttribute('aria-valuenow')).toBe('50');
+  });
+
+  it('takes the streak tooltip from the daily target', () => {
+    const status = statusOf(emptyState(), now);
+    render(<StatusBar status={{ ...status, dayProgress: { ...status.dayProgress, target: 25 } }} xp={0} />);
+    expect(screen.getByTitle('Tage in Folge mit mindestens 25 Spots')).toBeTruthy();
   });
 
   it('handles the top rank', () => {

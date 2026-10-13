@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { Card } from '../../engine/cards';
+import { type Card, rankOf } from '../../engine/cards';
 import { POSITION_LABELS } from '../../engine/positions';
 import type { Spot } from '../../engine/pushfold';
 import { tableModel } from '../table-model';
@@ -21,6 +21,8 @@ function behindText(n: number): string {
 
 export function PokerTable({ spot, cards }: { spot: Spot; cards: readonly [Card, Card] }) {
   const model = tableModel(spot);
+  // High card first, the way players read their hand.
+  const shown = [...cards].sort((a, b) => rankOf(b) - rankOf(a));
   const situation = spot.kind === 'open' ? 'Alle folden zu dir' : `${POSITION_LABELS[spot.shover]} geht All-in`;
   return (
     <section className="poker-table" aria-label="Pokertisch">
@@ -29,7 +31,7 @@ export function PokerTable({ spot, cards }: { spot: Spot; cards: readonly [Card,
           <div className="poker-table__pot">Pot {bb.format(model.potBb)} BB</div>
           <div className="poker-table__situation">{situation}</div>
           <div className="poker-table__cards">
-            {cards.map((card, i) => (
+            {shown.map((card, i) => (
               <PlayingCard key={`${card}-${i}`} card={card} delayMs={i * 120} />
             ))}
           </div>

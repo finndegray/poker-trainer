@@ -27,4 +27,10 @@ describe('PokerTable', () => {
     expect(screen.getByText('Du sitzt im BB · 12 BB · du handelst als Letzter')).toBeTruthy();
     expect(screen.getByText('Pot 14,5 BB')).toBeTruthy();
   });
+
+  it('shows the higher card first', () => {
+    const lowFirst = [parseCard('7c'), parseCard('Ah')] as const;
+    render(<PokerTable spot={{ kind: 'open', position: 'CO', stack: 12, hand: parseHand('A7o') }} cards={lowFirst} />);
+    expect(screen.getAllByRole('img').map((img) => img.getAttribute('aria-label'))).toEqual(['Herz Ass', 'Kreuz 7']);
+  });
 });

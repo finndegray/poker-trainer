@@ -46,7 +46,11 @@ Ein Gegner auf Position X geht als Erster mit Y BB All-in, alle dazwischen folde
 
 - Ergebnis: richtig, falsch oder Grenzfall
 - EV beider Optionen in BB, z. B. „All-in +0,42 BB · Fold 0 BB“
-- Der vollständige Range-Chart (13×13-Matrix) für diesen Spot, die gespielte Hand ist markiert
+- Der vollständige Range-Chart (13×13-Matrix) für diesen Spot, die gespielte Hand ist markiert. Grenzfälle sind getrennt eingefärbt: knapp Push/Call und knapp Fold.
+- **Positions-Vergleich:** dieselbe Hand bei gleichem Stack auf allen anderen Positionen, als Zeile mit einem Feld pro Position (Push/Call, Fold, knapp). Dazu eine Zusammenfassung wie „A7o bei 12 BB: Fold aus UTG bis HJ, Push ab CO“.
+  - Open-Shove: verglichen werden alle Open-Positionen UTG bis SB.
+  - Call vs. Shove: verglichen werden alle Caller-Positionen hinter demselben Shover.
+  - Die Logik dafür liegt im Rechenkern (reine Funktion über die vorhandenen Push/Fold-Daten), die Darstellung in der Oberfläche.
 - Weiter mit Tipp/Klick oder per Tastatur (Leertaste)
 
 ## 4. Rechenkern (offline vorberechnet)
@@ -138,6 +142,7 @@ Simuliert die Shortstack-Phase eines MTT. Die Hand-Ergebnisse werden nicht ausge
 
 - Stil „Klassisch Casino“: grüner Filz, Gold-Akzente, weiße Karten mit roten und schwarzen Farben
 - Oben eine Statusleiste mit Rang, XP-Balken und Streak. In der Mitte der Tisch mit der Situation, darunter die Hand. Unten zwei große Aktions-Buttons.
+- **Tisch mit allen 8 Plätzen:** jeder Platz beschriftet (UTG, UTG+1, LJ, HJ, CO, BTN, SB, BB), Dealer-Button und Blinds sichtbar. Der eigene Platz ist hervorgehoben, Spieler, die schon gefoldet haben, sind ausgegraut, der Shover ist mit seinem All-in markiert. Dazu ein Hinweis „noch N Spieler hinter dir“.
 - Responsiv: Bedienung am Handy mit dem Daumen, am PC zusätzlich per Tastatur (F = Fold, A = All-in/Call, Leertaste = weiter)
 - Animationen: Karten werden ausgeteilt und umgedreht, Chips fliegen beim XP-Gewinn, eine Feier beim Rangaufstieg
 - Sounds für Karten, Chips und Rangaufstieg. Sie sind abschaltbar, die Einstellung wird gespeichert.

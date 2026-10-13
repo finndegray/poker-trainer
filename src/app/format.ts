@@ -112,3 +112,10 @@ export function reviewActionLabel(a: ReviewActionInput, bigBlind: number): strin
             : `Raise auf ${bb(a.to ?? a.amount)}`;
   return a.allIn && a.action !== 'fold' && a.action !== 'check' ? `${text} · All-in` : text;
 }
+
+/** Spec 10: where a retraining spot comes from, "2026-10-12 15:46:28" → „Aus deinem Turnier vom 12.10.“. */
+export const retrainingHint = (playedAt: string): string => `Aus deinem Turnier vom ${playedAt.slice(8, 10)}.${playedAt.slice(5, 7)}.`;
+
+/** „1 Spot aus deinen Turnieren wartet im Training.“ / „3 Spots … warten …“. */
+export const formatRetrainingCount = (n: number): string =>
+  n === 1 ? '1 Spot aus deinen Turnieren wartet im Training.' : `${formatCount(n)} Spots aus deinen Turnieren warten im Training.`;

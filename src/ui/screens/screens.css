@@ -130,3 +130,10 @@
   padding: 0 12px;
   font-size: 14px;
 }
+
+.retraining-hint {
+  margin: 0 0 6px;
+  color: var(--gold);
+  font-size: 14px;
+  text-align: center;
+}

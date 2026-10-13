@@ -1,5 +1,5 @@
 import { strToU8, zipSync } from 'fflate';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getPushFoldData } from './data';
 import { ANALYSIS_VERSION } from '../review/analysis';
 import { type HandAnalyzer, createInlineAnalyzer } from '../review/analyzer';
@@ -15,7 +15,16 @@ import {
 import bounty from '../review/fixtures/bounty.txt?raw';
 import dailyClassic from '../review/fixtures/daily-classic.txt?raw';
 import steps from '../review/fixtures/step-satellites.txt?raw';
-import { LOCK_NEWER_ARCHIVE, LOCK_OTHER_TAB, LOCK_READ_ONLY, type ReviewStoreDeps, createReviewStore } from './review-store';
+import { answerRetraining, forgetRetraining, retrainingOf, syncRetraining } from '../game/retraining';
+import { type SaveState, emptyState } from '../storage/schema';
+import {
+  LOCK_NEWER_ARCHIVE,
+  LOCK_OTHER_TAB,
+  LOCK_READ_ONLY,
+  type RetrainingSink,
+  type ReviewStoreDeps,
+  createReviewStore,
+} from './review-store';
 
 const file = (name: string, text: string) => ({ name, bytes: strToU8(text) });
 
@@ -393,5 +402,172 @@ describe('review store', () => {
     const { part, omitted } = await store.exportPart();
     expect(part?.hands).toHaveLength(1);
     expect(omitted).toBe(1);
+  });
+});
+
+describe('retraining queue (spec 10)', () => {
+  const ERRORS = ['TM6532186101:15', 'TM6533069892:17', 'TM6532734973:13'];
+
+  function queueSink(initial: SaveState = emptyState()) {
+    let state = initial;
+    const sink: RetrainingSink = {
+      synced: () => new Set(retrainingOf(state).synced),
+      sync: (id, candidates) => {
+        state = syncRetraining(state, id, candidates);
+      },
+      forget: (id) => {
+        state = forgetRetraining(state, id);
+      },
+    };
+    return {
+      sink,
+      keys: () => retrainingOf(state).entries.map((e) => e.key),
+      state: () => state,
+      answer: (key: string) => {
+        state = answerRetraining(answerRetraining(state, key, 'correct'), key, 'correct');
+      },
+    };
+  }
+
+  it('feeds the preflop errors of a normal tournament on import, never those of satellites and bounty tournaments', async () => {
+    const queue = queueSink();
+    const { store } = await setup({ retraining: queue.sink });
+    await store.importText(`${steps}\n\n${bounty}`);
+    expect(queue.state().retraining).toBeUndefined();
+    await store.importText(dailyClassic);
+    expect(queue.keys()).toEqual(ERRORS);
+    expect(retrainingOf(queue.state()).entries[0]).toMatchObject({ tournamentId: '318096259', playedAt: '2026-10-13 13:15:28', streak: 0 });
+    expect([...queue.sink.synced()]).toEqual(['318096259']);
+    await store.importText(dailyClassic);
+    expect(queue.keys()).toEqual(ERRORS);
+  });
+
+  it('follows kind changes and deletion; cleared spots stay cleared', async () => {
+    const queue = queueSink();
+    const { store } = await setup({ retraining: queue.sink });
+    await store.importText(dailyClassic);
+    queue.answer(ERRORS[0]);
+    await store.setKind('318096259', 'bounty');
+    expect(queue.keys()).toEqual([]);
+    await store.setKind('318096259', 'normal');
+    expect(queue.keys()).toEqual(ERRORS.slice(1));
+    await store.deleteTournament('318096259');
+    expect(retrainingOf(queue.state())).toEqual({ entries: [], done: [ERRORS[0]], synced: [] });
+  });
+
+  it('feeds an archive from before Plan 9 once, only in the writing tab', async () => {
+    const backend = memoryReviewBackend();
+    const old = createReviewStore({ backend, data: getPushFoldData(), canWrite: () => true, readOnly: false, pause: async () => {} });
+    await old.load();
+    await old.importText(`${dailyClassic}\n\n${bounty}`);
+
+    const queue = queueSink();
+    let writer = false;
+    const store = createReviewStore({
+      backend, data: getPushFoldData(), canWrite: () => writer, readOnly: false, pause: async () => {}, retraining: queue.sink,
+    });
+    await store.load();
+    await store.syncRetraining();
+    expect(queue.state().retraining).toBeUndefined();
+    writer = true;
+    await store.refreshAccess();
+    await store.syncRetraining();
+    expect(queue.keys()).toEqual(ERRORS);
+    expect([...queue.sink.synced()]).toEqual(['318096259']);
+    queue.answer(ERRORS[2]);
+    await store.syncRetraining();
+    expect(queue.keys()).toEqual(ERRORS.slice(0, 2));
+  });
+
+  it('feeds tournaments that are rated again in the background', async () => {
+    const queue = queueSink();
+    const { store, backend } = await setup();
+    await store.importText(dailyClassic);
+    const stale: [string, string][] = Object.entries(backend.dump()).map(([k, v]) => {
+      const record = JSON.parse(v);
+      if (k.startsWith(HAND_PREFIX)) return [k, JSON.stringify({ ...record, analysisVersion: 1, analysis: { version: 1, decisions: [] } })];
+      return [k, JSON.stringify({ ...record, analysisVersion: 1 })];
+    });
+    await backend.setMany(stale);
+    const fresh = createReviewStore({ backend, data: getPushFoldData(), canWrite: () => true, readOnly: false, pause: async () => {}, retraining: queue.sink });
+    await fresh.load();
+    await fresh.syncRetraining();
+    expect(queue.keys()).toEqual([]);
+    await fresh.refreshStale();
+    expect(queue.keys()).toEqual(ERRORS);
+  });
+
+  it('keeps the archive write when the queue fails', async () => {
+    const sink: RetrainingSink = {
+      synced: () => new Set(),
+      sync: () => {
+        throw new Error('voll');
+      },
+      forget: () => {
+        throw new Error('voll');
+      },
+    };
+    const { store, backend } = await setup({ retraining: sink });
+    expect(await store.importText(dailyClassic)).toMatchObject({ imported: 6, tournaments: 1 });
+    expect(readTournament(backend.dump()[tournamentKey('318096259')]).handIds).toHaveLength(6);
+    await store.deleteTournament('318096259');
+    expect(backend.dump()).toEqual({});
+  });
+
+  it('reports queue failures through onError without failing the archive write', async () => {
+    const failure = new Error('voll');
+    const sink: RetrainingSink = {
+      synced: () => new Set(),
+      sync: () => {
+        throw failure;
+      },
+      forget: () => {
+        throw failure;
+      },
+    };
+    const onError = vi.fn();
+    const { store, backend } = await setup({ retraining: sink, onError });
+    await store.importText(dailyClassic);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenLastCalledWith(failure);
+    expect(readTournament(backend.dump()[tournamentKey('318096259')]).handIds).toHaveLength(6);
+    await store.deleteTournament('318096259');
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(backend.dump()).toEqual({});
+  });
+
+  it('reports queue failures of the one-time sync through onError', async () => {
+    const backend = memoryReviewBackend();
+    const first = await setup({ backend });
+    await first.store.importText(dailyClassic);
+    const failure = new Error('voll');
+    const onError = vi.fn();
+    const sink: RetrainingSink = {
+      synced: () => new Set(),
+      sync: () => {
+        throw failure;
+      },
+      forget: () => {},
+    };
+    const { store } = await setup({ backend, retraining: sink, onError });
+    await store.syncRetraining();
+    expect(onError).toHaveBeenCalledWith(failure);
+  });
+
+  it('marks tournaments as synced even without mappable candidates, only in the one-time sync', async () => {
+    const calls: Array<[string, number, boolean | undefined]> = [];
+    const sink: RetrainingSink = {
+      synced: () => new Set(),
+      sync: (id, candidates, markSynced) => {
+        calls.push([id, candidates.length, markSynced]);
+      },
+      forget: () => {},
+    };
+    const { store, backend } = await setup({ retraining: sink });
+    await store.importText(dailyClassic);
+    expect(calls).toEqual([['318096259', 3, undefined]]);
+    const { store: later } = await setup({ backend, retraining: sink });
+    await later.syncRetraining();
+    expect(calls[1]).toEqual(['318096259', 3, true]);
   });
 });

@@ -229,4 +229,11 @@ describe('ReviewScreen hand view', () => {
     expect(screen.getByText('Satellit/Bounty – Standard-Chart nur bedingt gültig')).toBeTruthy();
     expect(screen.getByText('Näherung: Chart für 40 BB · 25,4 BB effektiv')).toBeTruthy();
   });
+
+  it('shows how many spots from normal tournaments wait in the retraining', async () => {
+    await withHands(`${dailyClassic}
+
+${steps}`);
+    expect(screen.getByText('Nachtraining: 3 Spots aus deinen Turnieren warten im Training.')).toBeTruthy();
+  });
 });

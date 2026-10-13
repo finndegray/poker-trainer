@@ -1,14 +1,17 @@
-import { formatCount, formatPer100, formatPlayedAt } from '../../app/format';
+import { formatCount, formatPer100, formatPlayedAt, formatRetrainingCount } from '../../app/format';
+import { retrainingCount, retrainingOn } from '../../game/retraining';
 import { localDateKey } from '../../game/streak';
 import { ANALYSIS_VERSION } from '../../review/analysis';
 import { errorsPer100, weeklyErrorTrend } from '../../review/summary';
 import { TOURNAMENT_KIND_LABELS } from '../../review/tournament-kind';
 import { TrendBars, shortDate } from '../components/TrendChart';
+import { useGame } from '../GameContext';
 import { useReview } from '../ReviewContext';
 import './review.css';
 
 export function ReviewOverview({ onImport, onOpen, now }: { onImport: () => void; onOpen: (id: string) => void; now: () => Date }) {
   const review = useReview();
+  const game = useGame();
   if (review.status === 'loading') return <p className="panel muted">Hand-Archiv wird geladen …</p>;
 
   const trend = weeklyErrorTrend(review.tournaments.map((t) => t.summary), localDateKey(now()));
@@ -39,6 +42,12 @@ export function ReviewOverview({ onImport, onOpen, now }: { onImport: () => void
           Hände importieren
         </button>
         {review.lockReason && <p className="muted">{review.lockReason}</p>}
+        {retrainingCount(game.save) > 0 && (
+          <p className="muted">
+            Nachtraining: {formatRetrainingCount(retrainingCount(game.save))}
+            {!retrainingOn(game.save) && ' Es ist in den Einstellungen ausgeschaltet.'}
+          </p>
+        )}
         {review.reanalysis && (
           <p className="muted" aria-live="polite">
             Bewertung wird aktualisiert: Turnier {review.reanalysis.tournament} von {review.reanalysis.tournaments} · Hand{' '}

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFLOP_FILTER, isPreflopFilter, preflopFilterOf, preflopSpotOptions, samePreflopFilter } from './preflop-filter';
+import {
+  DEFAULT_PREFLOP_FILTER,
+  isPreflopFilter,
+  matchesPreflopFilter,
+  preflopFilterOf,
+  preflopSpotOptions,
+  samePreflopFilter,
+} from './preflop-filter';
 
 describe('preflop filter', () => {
   it('accepts every combination of spot type and stack', () => {
@@ -31,5 +38,12 @@ describe('preflop filter', () => {
     expect(preflopSpotOptions({ kind: 'all', stack: 40 })).toEqual({ stacks: [40] });
     expect(samePreflopFilter({ kind: 'rfi', stack: 40 }, { kind: 'rfi', stack: 40 })).toBe(true);
     expect(samePreflopFilter({ kind: 'rfi', stack: 40 }, { kind: 'rfi', stack: 100 })).toBe(false);
+  });
+  it('tells whether a spot fits the filter', () => {
+    const spot = { kind: 'rfi', stack: 100, hero: 'BTN', villain: null } as const;
+    expect(matchesPreflopFilter(spot, { kind: 'all', stack: 'all' })).toBe(true);
+    expect(matchesPreflopFilter(spot, { kind: 'rfi', stack: 100 })).toBe(true);
+    expect(matchesPreflopFilter(spot, { kind: 'rfi', stack: 40 })).toBe(false);
+    expect(matchesPreflopFilter(spot, { kind: 'vsOpen', stack: 'all' })).toBe(false);
   });
 });

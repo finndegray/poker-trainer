@@ -8,7 +8,17 @@ import type { PushFoldData } from '../engine/pushfold-data';
 import type { Rng } from '../engine/rng';
 import { type DailyResult, dailySpots } from '../game/daily';
 import { nextRunSpot } from '../game/endphase-run';
-import { type PreflopFilter, isPreflopFilter, preflopFilterOf, samePreflopFilter } from '../game/preflop-filter';
+import { type PreflopFilter, isPreflopFilter, matchesPreflopFilter, preflopFilterOf, samePreflopFilter } from '../game/preflop-filter';
+import {
+  type RetrainingCandidate,
+  answerRetraining,
+  forgetRetraining,
+  isRetrainingTurn,
+  pickRetraining,
+  retrainingOf,
+  setRetrainingOn,
+  syncRetraining,
+} from '../game/retraining';
 import {
   type DecisionOutcome,
   type PreflopDecisionOutcome,
@@ -30,8 +40,10 @@ import type { RankName } from '../game/xp';
 import { type RunSummary, type SaveState, deserialize, serialize } from '../storage/schema';
 import type { BackupApi, Persistence, PersistenceInfo } from './persistence';
 
-export type TrainingSpot = { spot: Spot; cards: readonly [Card, Card]; shownAt: number };
-export type PreflopDeal = { spot: PreflopSpot; cards: readonly [Card, Card]; shownAt: number };
+/** A spot from the retraining queue (spec 10): its key and when the hand was played, for „Aus deinem Turnier vom 12.10.“. */
+export type RetrainingOrigin = { key: string; playedAt: string };
+export type TrainingSpot = { spot: Spot; cards: readonly [Card, Card]; shownAt: number; retraining?: RetrainingOrigin };
+export type PreflopDeal = { spot: PreflopSpot; cards: readonly [Card, Card]; shownAt: number; retraining?: RetrainingOrigin };
 export type PreflopAnswerResult = {
   outcome: PreflopDecisionOutcome;
   comparison: PreflopComparison;
@@ -116,6 +128,14 @@ export type GameStore = {
   answerPreflop(action: PreflopAction): PreflopAnswerResult;
   /** Remembers the filter in the profile; an unanswered spot is replaced by one that fits. */
   setPreflopFilter(filter: PreflopFilter): void;
+  /** Replaces the queued spots of one tournament with its current preflop errors (spec 10); ignored in read-only mode. */
+  syncRetraining(tournamentId: string, candidates: readonly RetrainingCandidate[], markSynced?: boolean): void;
+  /** Removes the queued spots of a deleted tournament. */
+  forgetRetraining(tournamentId: string): void;
+  /** Tournaments whose hands were fed into the queue already. */
+  retrainingSynced(): ReadonlySet<string>;
+  /** The settings switch „Nachtraining mit Fehlern aus deinen Turnieren“. */
+  setRetrainingOn(on: boolean): void;
 };
 
 export function createGameStore(deps: GameStoreDeps): GameStore {
@@ -136,6 +156,12 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
   // Remembered separately, so the update notice comes back after the writer notice is dismissed.
   let updateAvailable = false;
   let hiddenSince: number | null = null;
+  // Spec 10: every fourth deal of a training may come from the queue. One counter per training type, in memory only;
+  // it keeps running across sessions of the same page, so the rate stays one in four.
+  let pushfoldDeals = 0;
+  let preflopDeals = 0;
+  let lastPushfoldKey: string | null = null;
+  let lastPreflopKey: string | null = null;
   const listeners = new Set<() => void>();
 
   const update = (patch: Partial<GameSnapshot>) => {
@@ -165,6 +191,18 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
     },
     nextTrainingSpot() {
       if (snapshot.info.readOnly) throw new Error('Training ist im Nur-Lesen-Modus nicht möglich');
+      pushfoldDeals += 1;
+      // The push/fold training has no filter, so every queued push/fold spot fits.
+      const queued = isRetrainingTurn(pushfoldDeals) ? pickRetraining(snapshot.save, (e) => e.game === 'pushfold', lastPushfoldKey) : null;
+      if (queued?.game === 'pushfold') {
+        lastPushfoldKey = queued.key;
+        const spot: Spot = { ...queued.spot };
+        update({
+          current: { spot, cards: dealConcrete(spot.hand, rng), shownAt: clock(), retraining: { key: queued.key, playedAt: queued.playedAt } },
+          last: null,
+        });
+        return;
+      }
       const spot = nextTrainingSpot(data, snapshot.save, rng);
       update({ current: { spot, cards: dealConcrete(spot.hand, rng), shownAt: clock() }, last: null });
     },
@@ -187,6 +225,8 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
       });
       let save = outcome.state;
       let session = snapshot.session;
+      // A queued spot counts like any other training spot and also moves its queue entry on.
+      if (current.retraining && session.kind === 'training') save = answerRetraining(save, current.retraining.key, outcome.grade.verdict);
       let celebration = outcome.rank.rankUp ? outcome.rank.after : snapshot.celebration;
       if (session.kind === 'daily') {
         const correct = session.correct + (outcome.grade.verdict === 'wrong' ? 0 : 1);
@@ -372,6 +412,20 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
     },
     nextPreflopSpot() {
       assertPlayable();
+      preflopDeals += 1;
+      const filter = preflopFilterOf(snapshot.save.profile);
+      const queued = isRetrainingTurn(preflopDeals)
+        ? pickRetraining(snapshot.save, (e) => e.game === 'preflop' && matchesPreflopFilter(e.spot, filter), lastPreflopKey)
+        : null;
+      if (queued?.game === 'preflop') {
+        lastPreflopKey = queued.key;
+        const spot: PreflopSpot = { ...queued.spot };
+        update({
+          preflopCurrent: { spot, cards: dealConcrete(spot.hand, rng), shownAt: clock(), retraining: { key: queued.key, playedAt: queued.playedAt } },
+          preflopLast: null,
+        });
+        return;
+      }
       const spot = nextPreflopTrainingSpot(snapshot.save, rng);
       update({ preflopCurrent: { spot, cards: dealConcrete(spot.hand, rng), shownAt: clock() }, preflopLast: null });
     },
@@ -386,7 +440,8 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
         now: now(),
       });
       const result = preflopAnswerResult(outcome);
-      commit(outcome.state, {
+      const save = current.retraining ? answerRetraining(outcome.state, current.retraining.key, outcome.grade.verdict) : outcome.state;
+      commit(save, {
         preflopLast: result,
         celebration: outcome.rank.rankUp ? outcome.rank.after : snapshot.celebration,
       });
@@ -400,6 +455,24 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
       commit({ ...snapshot.save, profile: { ...snapshot.save.profile, preflopFilter } });
       // An unanswered spot may not fit the new filter; an answered one keeps its feedback.
       if (snapshot.preflopCurrent && !snapshot.preflopLast) store.nextPreflopSpot();
+    },
+    syncRetraining(tournamentId, candidates, markSynced) {
+      if (snapshot.info.readOnly) return;
+      const next = syncRetraining(snapshot.save, tournamentId, candidates, markSynced);
+      if (next !== snapshot.save) commit(next);
+    },
+    forgetRetraining(tournamentId) {
+      if (snapshot.info.readOnly) return;
+      const next = forgetRetraining(snapshot.save, tournamentId);
+      if (next !== snapshot.save) commit(next);
+    },
+    retrainingSynced() {
+      return new Set(retrainingOf(snapshot.save).synced);
+    },
+    setRetrainingOn(on) {
+      assertPlayable();
+      const next = setRetrainingOn(snapshot.save, on);
+      if (next !== snapshot.save) commit(next);
     },
   };
   return store;

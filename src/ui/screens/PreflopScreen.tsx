@@ -5,6 +5,7 @@ import { PreflopActionBar } from '../components/ActionBar';
 import { FilterGroup, type Option } from '../components/FilterGroup';
 import { PreflopTable } from '../components/PokerTable';
 import { PreflopFeedbackPanel } from '../components/PreflopFeedbackPanel';
+import { RetrainingHint } from '../components/RetrainingHint';
 import { StatusBar } from '../components/StatusBar';
 import { TrainingLayout } from '../components/TrainingLayout';
 import { useGame, useGameStore } from '../GameContext';
@@ -69,6 +70,7 @@ export function PreflopScreen({ onBack }: { onBack: () => void }) {
         <TrainingLayout
           main={
             <>
+              <RetrainingHint origin={current.retraining} />
               <PreflopTable key={current.shownAt} spot={current.spot} cards={current.cards} />
               <PreflopActionBar spot={current.spot} answered={game.preflopLast !== null} onAction={onAction} onNext={onNext} />
             </>

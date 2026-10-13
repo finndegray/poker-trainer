@@ -10,6 +10,7 @@ import { allowedActions, type PreflopAction, type PreflopSpot } from '../engine/
 import type { PreflopFilter } from '../game/preflop-filter';
 import { dailySpots } from '../game/daily';
 import { RUN_LEVEL_STACKS, startRun } from '../game/endphase-run';
+import { type RetrainingCandidate, retrainingOf, syncRetraining } from '../game/retraining';
 import { deserialize, emptyState, SaveFormatError, serialize, type SaveState } from '../storage/schema';
 import { createGameStore, type GameStoreDeps } from './game-store';
 import type { PersistenceInfo } from './persistence';
@@ -636,5 +637,140 @@ describe('starthand training', () => {
     await store.importState(serialize(emptyState()));
     expect(store.getSnapshot().preflopCurrent).toBeNull();
     expect(store.getSnapshot().preflopLast).toBeNull();
+  });
+});
+
+describe('retraining queue (spec 10)', () => {
+  const pushfold: RetrainingCandidate = {
+    key: 'TM6532734973:13', playedAt: '2026-10-12 15:10:04', game: 'pushfold', spot: { kind: 'open', position: 'HJ', stack: 16, hand: 130 },
+  };
+  const chart: RetrainingCandidate = {
+    key: 'TM6532186101:15', playedAt: '2026-10-12 13:15:28', game: 'preflop', spot: { kind: 'rfi', stack: 100, hero: 'BTN', villain: null, hand: 105 },
+  };
+  const pushfoldSpot = pushfold.spot as Spot;
+  const queued = (base: SaveState = emptyState()) => syncRetraining(base, '318096259', [pushfold, chart]);
+  const origin = (c: RetrainingCandidate) => ({ key: c.key, playedAt: c.playedAt });
+  const streakOf = (store: ReturnType<typeof setup>['store'], key: string) =>
+    retrainingOf(store.getSnapshot().save).entries.find((e) => e.key === key)?.streak;
+
+  it('deals every fourth push/fold training spot from the queue and shows where it comes from', () => {
+    const { store } = setup({}, queued());
+    store.startTraining();
+    const deals = [store.getSnapshot().current!];
+    for (let i = 0; i < 7; i++) {
+      store.nextTrainingSpot();
+      deals.push(store.getSnapshot().current!);
+    }
+    expect(deals.map((d) => d.retraining?.key ?? null)).toEqual([null, null, null, pushfold.key, null, null, null, pushfold.key]);
+    expect(deals[3]).toMatchObject({ spot: pushfold.spot, retraining: origin(pushfold) });
+    expect(handClassOf(deals[3].cards[0], deals[3].cards[1])).toBe(130);
+  });
+
+  it('books a queued spot like any training spot and takes it out after two correct answers in a row', () => {
+    const { store, save, data } = setup({}, queued());
+    store.startTraining();
+    for (let i = 0; i < 3; i++) store.nextTrainingSpot();
+    const first = store.answer(rightAction(data, pushfoldSpot));
+    expect(first.outcome.record).toEqual({
+      ts: expect.any(Number), dateKey: '2026-10-13', mode: 'training', spot: pushfold.spot, chosen: 'fold', verdict: 'correct', responseMs: 0,
+    });
+    expect(first.outcome.xp.xp).toBeGreaterThan(0);
+    expect(streakOf(store, pushfold.key)).toBe(1);
+    expect(save).toHaveBeenLastCalledWith(store.getSnapshot().save);
+    const afterFirst = retrainingOf(deserialize(serialize(store.getSnapshot().save)));
+    expect(afterFirst).toEqual(retrainingOf(store.getSnapshot().save));
+    for (let i = 0; i < 4; i++) store.nextTrainingSpot();
+    expect(store.getSnapshot().current!.retraining).toEqual(origin(pushfold));
+    store.answer(rightAction(data, pushfoldSpot));
+    const r = retrainingOf(store.getSnapshot().save);
+    expect(r.entries.map((e) => e.key)).toEqual([chart.key]);
+    expect(r.done).toEqual([pushfold.key]);
+    expect(deserialize(serialize(store.getSnapshot().save)).retraining).toEqual(r);
+    expect(store.getSnapshot().save.decisions).toHaveLength(2);
+    expect(store.getSnapshot().status.dayProgress.count).toBe(2);
+  });
+
+  it('starts the streak again after a wrong answer', () => {
+    const { store, data } = setup({}, queued());
+    store.startTraining();
+    for (let i = 0; i < 3; i++) store.nextTrainingSpot();
+    store.answer(rightAction(data, pushfoldSpot));
+    for (let i = 0; i < 4; i++) store.nextTrainingSpot();
+    expect(store.answer(wrongAction(data, pushfoldSpot)).outcome.grade.verdict).toBe('wrong');
+    expect(streakOf(store, pushfold.key)).toBe(0);
+  });
+
+  it('deals queued starthand spots only when they fit the filter', () => {
+    const { store } = setup({}, queued(withFilter({ kind: 'vsOpen', stack: 'all' })));
+    store.startPreflop();
+    for (let i = 0; i < 3; i++) store.nextPreflopSpot();
+    expect(store.getSnapshot().preflopCurrent!.retraining).toBeUndefined();
+    expect(store.getSnapshot().preflopCurrent!.spot.kind).toBe('vsOpen');
+    // The unanswered spot is replaced (deal 5), then deals 6 to 8.
+    store.setPreflopFilter({ kind: 'rfi', stack: 'all' });
+    for (let i = 0; i < 3; i++) store.nextPreflopSpot();
+    const deal = store.getSnapshot().preflopCurrent!;
+    expect(deal).toMatchObject({ spot: chart.spot, retraining: origin(chart) });
+    const result = store.answerPreflop(preflopRight(deal.spot));
+    expect(result.outcome.record).toMatchObject({ game: 'preflop', mode: 'training', spot: chart.spot, verdict: 'correct' });
+    expect(streakOf(store, chart.key)).toBe(1);
+    store.setPreflopFilter({ kind: 'rfi', stack: 40 });
+    for (let i = 0; i < 8; i++) {
+      store.nextPreflopSpot();
+      expect(store.getSnapshot().preflopCurrent!.retraining).toBeUndefined();
+    }
+  });
+
+  it('deals nothing from the queue while the retraining is switched off', () => {
+    const { store, save } = setup({}, queued());
+    store.setRetrainingOn(false);
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ retraining: expect.objectContaining({ off: true }) }));
+    store.startTraining();
+    for (let i = 0; i < 8; i++) {
+      store.nextTrainingSpot();
+      expect(store.getSnapshot().current!.retraining).toBeUndefined();
+    }
+    store.setRetrainingOn(true);
+    expect('off' in retrainingOf(store.getSnapshot().save)).toBe(false);
+  });
+
+  it('never uses the queue in the daily challenge and the endphase run', () => {
+    const { store, data } = setup({}, queued());
+    store.startDaily();
+    const spots = dailySpots(data, '2026-10-13');
+    for (let i = 0; i < 8; i++) {
+      expect(store.getSnapshot().current).toMatchObject({ spot: spots[i] });
+      expect(store.getSnapshot().current!.retraining).toBeUndefined();
+      store.answer('fold');
+      store.next();
+    }
+    store.startRun({ restart: true });
+    for (let i = 0; i < 4; i++) {
+      expect(store.getSnapshot().current!.retraining).toBeUndefined();
+      store.answer(rightAction(data, store.getSnapshot().current!.spot));
+      store.next();
+    }
+    expect(retrainingOf(store.getSnapshot().save).entries).toHaveLength(2);
+  });
+
+  it('feeds and forgets the spots of a tournament and knows which tournaments were fed', () => {
+    const { store, save } = setup();
+    store.syncRetraining('318096259', []);
+    expect(save).not.toHaveBeenCalled();
+    store.syncRetraining('318096259', [pushfold, chart]);
+    expect(save).toHaveBeenLastCalledWith(store.getSnapshot().save);
+    expect(retrainingOf(store.getSnapshot().save).entries.map((e) => e.key)).toEqual([chart.key, pushfold.key]);
+    expect([...store.retrainingSynced()]).toEqual(['318096259']);
+    store.forgetRetraining('318096259');
+    expect(retrainingOf(store.getSnapshot().save)).toEqual({ entries: [], done: [], synced: [] });
+  });
+
+  it('changes nothing in read-only mode', () => {
+    const { store, save } = setup({ readOnly: true }, queued());
+    store.syncRetraining('1', [pushfold]);
+    store.forgetRetraining('318096259');
+    expect(() => store.setRetrainingOn(false)).toThrow('Im Nur-Lesen-Modus nicht möglich');
+    expect(save).not.toHaveBeenCalled();
+    expect(retrainingOf(store.getSnapshot().save).entries).toHaveLength(2);
   });
 });

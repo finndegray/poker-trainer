@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { RetrainingEntry } from '../game/retraining';
 import type { PreflopRecord } from '../game/stats';
-import { TODAY_SAVE } from './test-saves';
-import { SaveFormatError, deserialize, emptyState, migrate, serialize, type SaveState } from './schema';
+import { PLAN8_SAVE, TODAY_SAVE } from './test-saves';
+import { SaveFormatError, deserialize, emptyState, migrate, readRetraining, serialize, type SaveState } from './schema';
 
 const withDecision = (): SaveState => ({
   ...emptyState(),
@@ -245,5 +246,85 @@ describe('starthand records (Plan 6)', () => {
     const raw = today();
     raw.profile.preflopFilter = { kind: 'rfi', stack: 'all', extra: 1 };
     expect(migrate(raw).profile).toEqual({ xp: 1840, combo: 3, soundOn: false, preflopFilter: { kind: 'rfi', stack: 'all' } });
+  });
+});
+
+describe('retraining queue (Plan 9)', () => {
+  const pushfold: RetrainingEntry = {
+    key: 'TM6532734973:13', tournamentId: '318096259', playedAt: '2026-10-12 15:46:28', streak: 0,
+    game: 'pushfold', spot: { kind: 'open', position: 'HJ', stack: 16, hand: 130 },
+  };
+  const preflop: RetrainingEntry = {
+    key: 'TM6533069892:17', tournamentId: '318096259', playedAt: '2026-10-12 16:02:11', streak: 1,
+    game: 'preflop', spot: { kind: 'vsOpen', stack: 40, hero: 'BB', villain: 'SB', hand: 102 },
+  };
+  const queue = { entries: [pushfold, preflop], done: ['TM1:9'], synced: ['318096259'] };
+  const plan8 = () => JSON.parse(PLAN8_SAVE);
+
+  it("loads today's saves unchanged, byte for byte, without a retraining field", () => {
+    for (const text of [TODAY_SAVE, PLAN8_SAVE]) {
+      const loaded = deserialize(text);
+      expect('retraining' in loaded).toBe(false);
+      expect(serialize(loaded)).toBe(text);
+    }
+    expect(serialize(emptyState())).not.toContain('retraining');
+  });
+
+  it('round-trips a queue next to the existing fields, also switched off', () => {
+    const state: SaveState = { ...deserialize(PLAN8_SAVE), retraining: queue };
+    expect(deserialize(serialize(state))).toEqual(state);
+    const off: SaveState = { ...state, retraining: { off: true, ...queue } };
+    expect(deserialize(serialize(off))).toEqual(off);
+    expect(serialize(deserialize(serialize(off)))).toBe(serialize(off));
+  });
+
+  it('drops invalid entries one by one and lets the archive feed the queue again', () => {
+    const bad = [
+      { ...pushfold, key: '' },
+      { ...pushfold, key: 'x'.repeat(201) },
+      { ...pushfold, tournamentId: 7 },
+      { ...pushfold, playedAt: '12.10.2026' },
+      { ...pushfold, streak: 2 },
+      { ...pushfold, streak: 0.5 },
+      { ...pushfold, game: 'icm' },
+      { ...pushfold, spot: { kind: 'open', position: 'BB', stack: 16, hand: 130 } },
+      { ...pushfold, spot: { kind: 'open', position: 'HJ', stack: 21, hand: 130 } },
+      { ...preflop, spot: { ...preflop.spot, stack: 60 } },
+      { ...preflop, game: 'pushfold' },
+      { ...pushfold },
+      null,
+    ];
+    const raw = plan8();
+    raw.retraining = { ...queue, entries: [pushfold, preflop, ...bad] };
+    const loaded = migrate(raw);
+    expect(loaded.retraining).toEqual({ entries: [pushfold, preflop], done: ['TM1:9'], synced: [] });
+    expect(loaded.decisions).toHaveLength(3);
+    expect(loaded.profile.xp).toBe(2310);
+  });
+
+  it('never fails the save for a broken queue', () => {
+    for (const retraining of [null, 7, 'voll', [], { entries: 'kaputt', done: 3, synced: [1, '2'] }, { off: 'ja' }]) {
+      const raw = plan8();
+      raw.retraining = retraining;
+      const loaded = migrate(raw);
+      expect(loaded.decisions).toHaveLength(3);
+      expect(loaded.retraining ?? null).toEqual(readRetraining(retraining));
+    }
+    expect(readRetraining({ entries: 'kaputt', done: 3, synced: [1, '2'] })).toEqual({ entries: [], done: [], synced: [] });
+    expect(readRetraining({ off: 'ja' })).toEqual({ entries: [], done: [], synced: [] });
+    expect(readRetraining(null)).toBeNull();
+  });
+
+  it('keeps unknown extra keys out and copies the entries', () => {
+    const raw = plan8();
+    raw.retraining = { ...queue, extra: 1, entries: [{ ...pushfold, spot: { ...pushfold.spot, shover: 'UTG' }, note: 'x' }] };
+    const loaded = migrate(raw);
+    expect(loaded.retraining).toEqual({ entries: [pushfold], done: ['TM1:9'], synced: ['318096259'] });
+    expect(loaded.retraining!.entries[0]).not.toBe(raw.retraining.entries[0]);
+  });
+
+  it('ignores unknown top-level fields, as every earlier app version does with the queue', () => {
+    const raw = { ...plan8(), zukunft: { entries: [] } };
+    expect(serialize(migrate(raw))).toBe(PLAN8_SAVE);
   });
 });

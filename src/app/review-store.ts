@@ -1,4 +1,5 @@
 import type { PushFoldData } from '../engine/pushfold-data';
+import type { RetrainingCandidate } from '../game/retraining';
 import { ANALYSIS_VERSION } from '../review/analysis';
 import { type HandAnalyzer, createInlineAnalyzer } from '../review/analyzer';
 import {
@@ -30,6 +31,7 @@ import {
   writeFailureMessage,
 } from '../review/import';
 import { HandParseError, type ParsedHand, type SkippedHand, parseHand } from '../review/parse';
+import { retrainingCandidates } from '../review/retraining';
 import type { TournamentKind } from '../review/tournament-kind';
 
 export type ReviewHand = { record: HandRecord; hand: ParsedHand };
@@ -48,6 +50,15 @@ export type ReviewSnapshot = {
   reanalysis: ImportProgress | null;
   lastImport: ImportSummary | null;
 };
+/** Where the preflop errors go (spec 10): the retraining queue in the save; main.tsx passes the game store. */
+export type RetrainingSink = {
+  /** Tournaments whose hands were fed in already. */
+  synced(): ReadonlySet<string>;
+  /** Replaces the queued spots of one tournament with its current errors. */
+  /** `markSynced`: the one-time read of an archive; the tournament counts as read even without any spot. */
+  sync(tournamentId: string, candidates: readonly RetrainingCandidate[], markSynced?: boolean): void;
+  forget(tournamentId: string): void;
+};
 export type ReviewStoreDeps = {
   backend: ReviewBackend;
   data: PushFoldData;
@@ -58,6 +69,10 @@ export type ReviewStoreDeps = {
   /** Rates hands; main.tsx passes the Web Worker analyzer. Default: on the main thread in chunks. */
   analyzer?: HandAnalyzer;
   pause?: () => Promise<void>;
+  /** The retraining queue; without it (tests, tools) nothing is fed. */
+  retraining?: RetrainingSink;
+  /** Failures of the queue (it never fails an archive write, but they must not vanish); main.tsx passes the logger. */
+  onError?: (error: unknown) => void;
 };
 export type ReviewStore = {
   /** The push/fold data the ratings use (charts and comparisons in the hand view). */
@@ -81,6 +96,12 @@ export type ReviewStore = {
   exportPart(): Promise<{ part: ArchiveExport | null; omitted: number }>;
   /** Merges the archive part of an export file (hand numbers decide about duplicates). */
   mergeExport(part: ArchiveExport): Promise<ImportSummary>;
+  /**
+   * Feeds the preflop errors of normal tournaments that were never fed into the retraining queue (archives from
+   * before Plan 9, or after a save import). Writing tab only; tournaments that wait for a new rating are fed by
+   * `refreshStale` instead.
+   */
+  syncRetraining(): Promise<void>;
 };
 
 export const LOCK_READ_ONLY = 'Nur-Lesen-Modus: Bitte die App aktualisieren, um Hände zu importieren.';
@@ -90,6 +111,17 @@ export const BLOCKED_DURING_IMPORT = 'Während eines Imports nicht möglich.';
 export const LOCK_FAILED = 'Das Hand-Archiv konnte nicht geladen werden.';
 
 const byNewest = (a: TournamentRecord, b: TournamentRecord) => b.lastPlayedAt.localeCompare(a.lastPlayedAt) || a.id.localeCompare(b.id);
+
+/** The game store as the sink of the retraining queue. */
+export const retrainingSinkOf = (game: {
+  retrainingSynced(): ReadonlySet<string>;
+  syncRetraining(tournamentId: string, candidates: readonly RetrainingCandidate[], markSynced?: boolean): void;
+  forgetRetraining(tournamentId: string): void;
+}): RetrainingSink => ({
+  synced: () => game.retrainingSynced(),
+  sync: (id, candidates, markSynced) => game.syncRetraining(id, candidates, markSynced),
+  forget: (id) => game.forgetRetraining(id),
+});
 
 export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
   const { backend, data, canWrite, readOnly } = deps;
@@ -167,6 +199,19 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
   }
 
   const isCurrent = (t: TournamentRecord) => (t.analysisVersion ?? 1) === ANALYSIS_VERSION;
+
+  /** After every archive write of a tournament: its current preflop errors replace its part of the queue. */
+  const feed = (tournament: TournamentRecord, hands: readonly HandRecord[], markSynced?: boolean) => {
+    const sink = deps.retraining;
+    if (!sink) return;
+    const rated = hands.filter((h) => h.analysisVersion === ANALYSIS_VERSION && isHandAnalysis(h.analysis));
+    try {
+      sink.sync(tournament.id, retrainingCandidates(tournament.kind, rated), markSynced);
+    } catch (error) {
+      // The queue is only a copy of the archived errors: it must never fail an archive write that already happened.
+      deps.onError?.(error);
+    }
+  };
   let refreshing: Promise<void> | null = null;
 
   const replaceTournament = (record: TournamentRecord) =>
@@ -206,6 +251,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
             );
             assertWritable();
             await writeRecords(backend, [next], [...old.changed, ...added]);
+            feed(next, [...old.hands.map((h) => h.record), ...added]);
             return next;
           });
           imported += added.length;
@@ -282,6 +328,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
             if (snapshot.writable) {
               await writeRecords(backend, [current], loaded.changed);
               update({ tournaments: replaceTournament(current) });
+              feed(current, loaded.hands.map((h) => h.record));
             }
           }
           return { tournament: current, hands: loaded.hands, problems: loaded.problems };
@@ -320,6 +367,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
                 return false;
               }
               update({ tournaments: replaceTournament(record) });
+              feed(record, loaded.hands.map((h) => h.record));
               return false;
             });
             if (stop) break;
@@ -344,6 +392,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
         assertWritable();
         await writeRecords(backend, [record], loaded.changed);
         update({ tournaments: replaceTournament(record) });
+        feed(record, loaded.hands.map((h) => h.record));
       });
     },
     async deleteTournament(id) {
@@ -353,6 +402,12 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
       if (!tournament) return;
       await serial(() => removeTournament(backend, tournament));
       update({ tournaments: snapshot.tournaments.filter((t) => t.id !== id) });
+      try {
+        deps.retraining?.forget(id);
+      } catch (error) {
+        // As in feed: the archive change stands.
+        deps.onError?.(error);
+      }
     },
     async exportPart() {
       let omitted = snapshot.problems.length;
@@ -370,6 +425,31 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
       const kinds = new Map(part.tournaments.map((t) => [t.id, t.kind] as const));
       const texts = part.hands.map((h) => ({ name: 'Export', text: h.raw }));
       return importTexts(texts, [], kinds);
+    },
+    async syncRetraining() {
+      const sink = deps.retraining;
+      if (!sink) return;
+      if (snapshot.status === 'ready') update({});
+      if (!snapshot.writable) return;
+      const synced = sink.synced();
+      // Only normal tournaments with preflop errors can give spots; the others need no reading at all.
+      const ids = snapshot.tournaments
+        .filter((t) => t.kind === 'normal' && t.summary.preflopErrors > 0 && isCurrent(t) && !synced.has(t.id))
+        .map((t) => t.id);
+      for (const id of ids) {
+        const stop = await serial(async () => {
+          update({});
+          if (!snapshot.writable) return true;
+          const tournament = snapshot.tournaments.find((t) => t.id === id);
+          if (!tournament || sink.synced().has(id)) return false;
+          const { hands } = await loadHands(backend, tournament.handIds);
+          update({});
+          if (!snapshot.writable) return true;
+          feed(tournament, hands, true);
+          return false;
+        });
+        if (stop) break;
+      }
     },
   };
   return store;

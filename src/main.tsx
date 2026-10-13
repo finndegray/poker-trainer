@@ -3,7 +3,7 @@ import { type Root, createRoot } from 'react-dom/client';
 import { getPushFoldData } from './app/data';
 import { type GameStore, createGameStore } from './app/game-store';
 import { type Persistence, browserEnv, installFlushOnHide, openPersistence } from './app/persistence';
-import { createReviewStore } from './app/review-store';
+import { createReviewStore, retrainingSinkOf } from './app/review-store';
 import { createUpdatePolicy } from './app/update-policy';
 import { registerSW } from 'virtual:pwa-register';
 import { mulberry32 } from './engine/rng';
@@ -80,12 +80,17 @@ async function bootstrap(): Promise<void> {
     canWrite: () => opened.canWrite(),
     readOnly: opened.info.readOnly,
     analyzer,
+    // Preflop errors of normal tournaments go into the retraining queue of the save (spec 10).
+    retraining: retrainingSinkOf(ready),
+    onError: logError,
   });
-  // Archived hands from an older analysis version are rated again in the background (writing tab only).
-  review.load().then(() => review.refreshStale()).catch(logError);
+  // Archived hands from an older analysis version are rated again in the background (writing tab only), then
+  // tournaments never fed into the retraining queue are fed (archives from before Plan 9).
+  const refreshArchive = () => review.refreshStale().then(() => review.syncRetraining());
+  review.load().then(refreshArchive).catch(logError);
   opened.onWriterAcquired((fresh) => {
     ready.adoptSavedState(fresh);
-    review.refreshAccess().then(() => review.refreshStale()).catch(logError);
+    review.refreshAccess().then(refreshArchive).catch(logError);
   });
   document.addEventListener('visibilitychange', () => {
     const visible = document.visibilityState === 'visible';

@@ -43,7 +43,7 @@ export function createUpdatePolicy(deps: UpdatePolicyDeps): UpdatePolicy {
     async onHidden() {
       if (reloadPending) {
         await deps.flush();
-        deps.reload();
+        if (deps.isHidden() || requested) deps.reload();
       } else if (waiting) {
         await deps.flush();
         await deps.activate();

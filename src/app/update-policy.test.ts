@@ -53,6 +53,22 @@ describe('update policy', () => {
     expect(calls.slice(-2)).toEqual(['flush', 'reload']);
   });
 
+  it('does not reload a deferred update when the tab became visible again during the flush', async () => {
+    const { policy, deps, calls, state } = setup(false);
+    await policy.onNeedReload();
+    state.hidden = true;
+    deps.flush.mockImplementationOnce(async () => {
+      calls.push('flush');
+      state.hidden = false;
+    });
+    await policy.onHidden();
+    expect(deps.reload).not.toHaveBeenCalled();
+
+    state.hidden = true;
+    await policy.onHidden();
+    expect(deps.reload).toHaveBeenCalledOnce();
+  });
+
   it('activates a waiting version when the tab becomes hidden', async () => {
     const { policy, deps, calls } = setup(false);
     policy.onNeedRefresh();

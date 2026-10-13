@@ -1,5 +1,6 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { formatCount, formatHands } from '../../app/format';
+import { formatCount, formatHands, formatRetrainingCount } from '../../app/format';
+import { retrainingCount, retrainingOn } from '../../game/retraining';
 import { localDateKey } from '../../game/streak';
 import { type ArchiveExport, readArchivePart, withArchive } from '../../review/export';
 import { BACKUP_PREFIX } from '../../storage/store';
@@ -156,6 +157,25 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
           />
           Sounds abspielen
         </label>
+      </section>
+
+      <section className="panel settings-section">
+        <h3 className="settings-section__title">Nachtraining</h3>
+        <label className="settings-switch">
+          <input
+            type="checkbox"
+            checked={retrainingOn(game.save)}
+            disabled={!canWrite}
+            onChange={(event) => store.setRetrainingOn(event.target.checked)}
+          />
+          Nachtraining mit Fehlern aus deinen Turnieren
+        </label>
+        <p className="muted">
+          Preflop-Fehler aus normalen Turnieren im Hand-Review kommen etwa als jeder vierte Spot ins Push/Fold- und ins
+          Starthand-Training, bis du sie zweimal in Folge richtig spielst.
+          {retrainingCount(game.save) > 0 && ` ${formatRetrainingCount(retrainingCount(game.save))}`}
+        </p>
+        {!canWrite && <p className="muted">Einstellungen ändern ist nur in dem Tab möglich, der deinen Fortschritt speichert.</p>}
       </section>
 
       <section className="panel settings-section">

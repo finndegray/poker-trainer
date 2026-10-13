@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { PreflopFilter } from '../../game/preflop-filter';
+import { syncRetraining } from '../../game/retraining';
 import { emptyState, type SaveState } from '../../storage/schema';
 import { renderWithStore } from '../test-utils';
 import { PreflopScreen } from './PreflopScreen';
@@ -92,5 +93,18 @@ describe('PreflopScreen', () => {
     renderWithStore(<PreflopScreen onBack={onBack} />);
     fireEvent.click(screen.getByRole('button', { name: '← Menü' }));
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it('marks a queued spot from the hand review with the date of the tournament', () => {
+    const initial = syncRetraining(withFilter({ kind: 'rfi', stack: 'all' }), '318096259', [
+      { key: 'TM6532186101:15', playedAt: '2026-10-12 13:15:28', game: 'preflop', spot: { kind: 'rfi', stack: 100, hero: 'BTN', villain: null, hand: 105 } },
+    ]);
+    const { store } = renderWithStore(<PreflopScreen onBack={() => {}} />, { initial });
+    expect(screen.queryByRole('note')).toBeNull();
+    act(() => {
+      for (let i = 0; i < 3; i++) store.nextPreflopSpot();
+    });
+    expect(screen.getByRole('note').textContent).toBe('Aus deinem Turnier vom 12.10.');
+    expect(store.getSnapshot().preflopCurrent!.spot).toEqual({ kind: 'rfi', stack: 100, hero: 'BTN', villain: null, hand: 105 });
   });
 });

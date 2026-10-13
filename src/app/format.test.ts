@@ -12,9 +12,11 @@ import {
   formatPer100,
   formatPercent,
   formatPlayedAt,
+  formatRetrainingCount,
   preflopChoiceLabel,
   preflopSituationText,
   preflopSpotTitle,
+  retrainingHint,
   reviewActionLabel,
   streetLabel,
   verdictLabel,
@@ -107,6 +109,13 @@ describe('starthand formatting', () => {
     expect(formatDateKey('2026-10-13')).toBe('13.10.2026');
     expect(formatPlayedAt('2026-10-13 15:46:28')).toBe('13.10.2026 15:46');
     expect(streetLabel('turn')).toBe('Turn');
+  });
+
+  it('formats the retraining hint and the queue size', () => {
+    expect(retrainingHint('2026-10-12 15:46:28')).toBe('Aus deinem Turnier vom 12.10.');
+    expect(retrainingHint('2026-01-05 09:00:00')).toBe('Aus deinem Turnier vom 05.01.');
+    expect(formatRetrainingCount(1)).toBe('1 Spot aus deinen Turnieren wartet im Training.');
+    expect(formatRetrainingCount(200)).toBe('200 Spots aus deinen Turnieren warten im Training.');
   });
 
   it('labels hand-history actions in BB', () => {

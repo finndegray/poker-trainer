@@ -3,6 +3,7 @@ import type { Action } from '../../engine/pushfold';
 import { ActionBar } from '../components/ActionBar';
 import { FeedbackPanel } from '../components/FeedbackPanel';
 import { PokerTable } from '../components/PokerTable';
+import { RetrainingHint } from '../components/RetrainingHint';
 import { ResultCard } from '../components/ResultCard';
 import { SessionHeader } from '../components/SessionHeader';
 import { StatusBar } from '../components/StatusBar';
@@ -66,6 +67,7 @@ export function PlayScreen({ mode, onBack }: { mode: PlayMode; onBack: () => voi
         <TrainingLayout
           main={
             <>
+              <RetrainingHint origin={current.retraining} />
               <PokerTable key={current.shownAt} spot={current.spot} cards={current.cards} />
               <ActionBar kind={current.spot.kind} answered={game.last !== null} onAction={onAction} onNext={onNext} />
             </>

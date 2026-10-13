@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import dailyClassic from '../../review/fixtures/daily-classic.txt?raw';
+import { retrainingOf, syncRetraining } from '../../game/retraining';
 import bounty from '../../review/fixtures/bounty.txt?raw';
+import dailyClassic from '../../review/fixtures/daily-classic.txt?raw';
 import { memoryReviewBackend, tournamentKey } from '../../review/archive';
 import { EXPORT_KEY, withArchive } from '../../review/export';
 import { emptyState, serialize } from '../../storage/schema';
@@ -242,5 +243,39 @@ describe('SettingsScreen with the hand archive', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Exportieren' }));
     await waitFor(() => expect(downloadText).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/unlesbar/)).toBeNull();
+  });
+
+  it('switches the retraining off and on and shows how many spots wait', () => {
+    const initial = syncRetraining(emptyState(), '318096259', [
+      { key: 'TM1:13', playedAt: '2026-10-12 15:10:04', game: 'pushfold', spot: { kind: 'open', position: 'HJ', stack: 16, hand: 130 } },
+    ]);
+    const { store, save } = renderWithStore(<SettingsScreen onBack={() => {}} />, { initial });
+    const toggle = screen.getByLabelText('Nachtraining mit Fehlern aus deinen Turnieren') as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(screen.getByText(/1 Spot aus deinen Turnieren wartet im Training./)).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(false);
+    expect(retrainingOf(store.getSnapshot().save).off).toBe(true);
+    expect(save).toHaveBeenCalledTimes(1);
+    fireEvent.click(toggle);
+    expect('off' in retrainingOf(store.getSnapshot().save)).toBe(false);
+  });
+
+  it('disables the retraining switch in a reading tab', () => {
+    renderWithStore(<SettingsScreen onBack={() => {}} />, { info: { otherTabActive: true } });
+    expect((screen.getByLabelText('Nachtraining mit Fehlern aus deinen Turnieren') as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('feeds the archive into the queue of an imported save', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { store, review, loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(async () => {
+      await loaded;
+      await review.importText(dailyClassic);
+    });
+    expect(retrainingOf(store.getSnapshot().save).entries).toHaveLength(3);
+    fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(serialize(emptyState()))] } });
+    expect(await screen.findByText('Spielstand importiert.')).toBeTruthy();
+    await waitFor(() => expect(retrainingOf(store.getSnapshot().save).entries).toHaveLength(3));
   });
 });

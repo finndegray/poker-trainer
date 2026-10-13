@@ -135,3 +135,48 @@
     height: 64px;
   }
 }
+
+@media (min-width: 1100px) {
+  /* Keep table and buttons inside the window on lower desktop screens. */
+  .poker-table__stage {
+    max-width: max(420px, calc((100vh - 400px) * 1.35));
+    margin: 0 auto;
+  }
+
+  .seat {
+    min-width: 72px;
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+
+  .seat__stack {
+    font-size: 13px;
+  }
+
+  .poker-table__pot,
+  .poker-table__situation {
+    font-size: 16px;
+  }
+
+  .poker-table__info {
+    font-size: 16px;
+  }
+
+  .poker-table__cards {
+    gap: 12px;
+  }
+
+  .playing-card {
+    width: 76px;
+    height: 106px;
+    border-radius: 9px;
+  }
+
+  .playing-card .playing-card__rank {
+    font-size: 32px;
+  }
+
+  .playing-card .playing-card__suit {
+    font-size: 28px;
+  }
+}

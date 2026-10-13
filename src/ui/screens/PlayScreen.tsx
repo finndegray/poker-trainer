@@ -6,6 +6,7 @@ import { PokerTable } from '../components/PokerTable';
 import { ResultCard } from '../components/ResultCard';
 import { SessionHeader } from '../components/SessionHeader';
 import { StatusBar } from '../components/StatusBar';
+import { TrainingLayout } from '../components/TrainingLayout';
 import { useGame, useGameStore } from '../GameContext';
 import './screens.css';
 
@@ -62,11 +63,15 @@ export function PlayScreen({ mode, onBack }: { mode: PlayMode; onBack: () => voi
       <StatusBar status={game.status} xp={game.save.profile.xp} />
       {active && <SessionHeader session={session} activeRun={game.save.activeRun} />}
       {current && (
-        <>
-          <PokerTable key={current.shownAt} spot={current.spot} cards={current.cards} />
-          <ActionBar kind={current.spot.kind} answered={game.last !== null} onAction={onAction} onNext={onNext} />
-          {game.last && <FeedbackPanel result={game.last} spot={current.spot} />}
-        </>
+        <TrainingLayout
+          main={
+            <>
+              <PokerTable key={current.shownAt} spot={current.spot} cards={current.cards} />
+              <ActionBar kind={current.spot.kind} answered={game.last !== null} onAction={onAction} onNext={onNext} />
+            </>
+          }
+          side={game.last && <FeedbackPanel result={game.last} spot={current.spot} />}
+        />
       )}
       {!current && finished && <ResultCard session={session} onRestart={() => start(true)} onHome={onBack} />}
     </>

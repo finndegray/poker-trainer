@@ -138,3 +138,12 @@ body {
   margin-top: 40vh;
   color: var(--cream-muted);
 }
+
+/* Desktop: use the extra width (two-column training and stats, larger table). */
+@media (min-width: 1100px) {
+  .app {
+    max-width: 1240px;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}

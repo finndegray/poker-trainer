@@ -48,10 +48,11 @@ export function grade(data: PushFoldData, spot: Spot, chosen: Action): Grade {
   return { verdict, chosen, best, evAggressive: ev, evFold: 0 };
 }
 
+export function cellForEv(ev: number): ChartCell {
+  if (Math.abs(ev) < CLOSE_THRESHOLD) return ev > 0 ? 'close-aggressive' : 'close-fold';
+  return ev > 0 ? 'aggressive' : 'fold';
+}
+
 export function chart(data: PushFoldData, s: Situation): ChartCell[] {
-  return evRow(data, s).map((ev): ChartCell =>
-    Math.abs(ev) < CLOSE_THRESHOLD
-      ? ev > 0 ? 'close-aggressive' : 'close-fold'
-      : ev > 0 ? 'aggressive' : 'fold',
-  );
+  return evRow(data, s).map(cellForEv);
 }

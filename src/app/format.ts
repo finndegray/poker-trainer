@@ -1,3 +1,6 @@
+import { POSITION_LABELS } from '../engine/positions';
+import { preflopActionWord } from '../engine/preflop/grading';
+import { type PreflopAction, type PreflopSpot, betsFor } from '../engine/preflop/spots';
 import type { Action, Verdict } from '../engine/pushfold';
 import type { SpotKind } from '../engine/spot-generator';
 
@@ -33,3 +36,24 @@ const VERDICT_LABELS: Record<Verdict, string> = {
   wrong: 'Falsch',
 };
 export const verdictLabel = (verdict: Verdict): string => VERDICT_LABELS[verdict];
+
+const bbNumber = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
+/** Chip amounts in BB with the German decimal comma, e.g. 6,6. */
+export const formatBb = (bb: number): string => bbNumber.format(bb);
+
+export function preflopChoiceLabel(action: PreflopAction, spot: PreflopSpot): string {
+  if (action === 'fold') return 'Fold';
+  if (action === 'call') return 'Call';
+  const word = preflopActionWord(action, spot.stack);
+  const to = formatBb(betsFor(spot).aggressiveTo);
+  return word === 'All-in' ? `All-in ${to} BB` : `${word} auf ${to} BB`;
+}
+
+export function preflopSituationText(spot: PreflopSpot): string {
+  const { facing } = betsFor(spot);
+  if (spot.kind === 'rfi' || spot.villain === null || facing === null) return 'Alle folden zu dir';
+  const villain = POSITION_LABELS[spot.villain];
+  return spot.kind === 'vsOpen'
+    ? `${villain} erhöht auf ${formatBb(facing)} BB`
+    : `${villain} 3-bettet auf ${formatBb(facing)} BB`;
+}

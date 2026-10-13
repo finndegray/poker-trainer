@@ -102,6 +102,15 @@
   border-color: var(--gold);
 }
 
+.seat--raiser {
+  border-color: var(--gold);
+}
+
+.seat__stack {
+  color: var(--cream-muted);
+  font-size: 11px;
+}
+
 .seat--folded {
   color: rgba(243, 233, 198, 0.4);
   border-color: rgba(243, 233, 198, 0.12);

@@ -1,0 +1,96 @@
+Poker Hand #TM6532443900: Tournament #318586851, $0.50 Step to The Weekender Hold'em No Limit - Level1(20/40(4)) - 2026/10/13 13:03:32
+Table '2' 8-max Seat #3 is the button
+Seat 1: 9e1d0c10 (1,084 in chips)
+Seat 2: 314cd32f (924 in chips)
+Seat 3: fe2b2d47 (840 in chips)
+Seat 4: Hero (1,104 in chips)
+Seat 5: 3c65dbb1 (1,048 in chips)
+Seat 6: 3c274f3 (1,000 in chips)
+fe2b2d47: posts the ante 4
+3c274f3: posts the ante 4
+Hero: posts the ante 4
+314cd32f: posts the ante 4
+3c65dbb1: posts the ante 4
+9e1d0c10: posts the ante 4
+Hero: posts small blind 20
+3c65dbb1: posts big blind 40
+*** HOLE CARDS ***
+Dealt to 9e1d0c10 
+Dealt to 314cd32f 
+Dealt to fe2b2d47 
+Dealt to Hero [6s As]
+Dealt to 3c65dbb1 
+Dealt to 3c274f3 
+3c274f3: folds
+9e1d0c10: folds
+314cd32f: folds
+fe2b2d47: folds
+Hero: raises 80 to 120
+3c65dbb1: raises 160 to 280
+Hero: calls 160
+*** FLOP *** [6c 5s 4s]
+Hero: checks
+3c65dbb1: bets 193
+Hero: raises 627 to 820 and is all-in
+3c65dbb1: calls 571 and is all-in
+Uncalled bet (56) returned to Hero
+Hero: shows [6s As] (a pair of Sixes)
+3c65dbb1: shows [Ac Jc] (Ace high)
+*** TURN *** [6c 5s 4s] [2d]
+*** RIVER *** [6c 5s 4s 2d] [8s]
+*** SHOWDOWN ***
+Hero collected 2,112 from pot
+*** SUMMARY ***
+Total pot 2,112 | Rake 0 | Jackpot 0 | Bingo 0 | Fortune 0 | Tax 0
+Board [6c 5s 4s 2d 8s]
+Seat 1: 9e1d0c10 folded before Flop
+Seat 2: 314cd32f folded before Flop
+Seat 3: fe2b2d47 (button) folded before Flop
+Seat 4: Hero (small blind) showed [6s As] and won (2,112) with a flush Ace high
+Seat 5: 3c65dbb1 (big blind) showed [Ac Jc] and lost with Ace high
+Seat 6: 3c274f3 folded before Flop
+
+
+Poker Hand #TM6532799440: Tournament #318586827, $0.50 Step to The Weekender Hold'em No Limit - Level1(20/40(4)) - 2026/10/13 11:31:49
+Table '3' 8-max Seat #7 is the button
+Seat 1: 16564bde (24 in chips)
+Seat 5: 3d93b9d2 (2,084 in chips)
+Seat 6: fbdde14e (996 in chips)
+Seat 7: 3e9ba0b6 (1,948 in chips)
+Seat 8: Hero (1,020 in chips)
+3d93b9d2: posts the ante 4
+fbdde14e: posts the ante 4
+Hero: posts the ante 4
+16564bde: posts the ante 4
+3e9ba0b6: posts the ante 4
+Hero: posts small blind 20
+16564bde: posts big blind 20
+*** HOLE CARDS ***
+Dealt to 16564bde 
+Dealt to 3d93b9d2 
+Dealt to fbdde14e 
+Dealt to 3e9ba0b6 
+Dealt to Hero [Kd Js]
+3d93b9d2: folds
+fbdde14e: folds
+3e9ba0b6: raises 80 to 120
+Hero: calls 100
+*** FLOP *** [4s Jd 9c]
+Hero: bets 140
+3e9ba0b6: folds
+Uncalled bet (140) returned to Hero
+Hero: shows [Kd Js] (a pair of Jacks)
+16564bde: shows [5d 5s] (a pair of Fives)
+*** TURN *** [4s Jd 9c] [7c]
+*** RIVER *** [4s Jd 9c 7c] [Ks]
+*** SHOWDOWN ***
+Hero collected 80 from pot
+Hero collected 200 from pot
+*** SUMMARY ***
+Total pot 280 | Rake 0 | Jackpot 0 | Bingo 0 | Fortune 0 | Tax 0
+Board [4s Jd 9c 7c Ks]
+Seat 1: 16564bde (big blind) showed [5d 5s] and lost with a pair of Fives
+Seat 5: 3d93b9d2 folded before Flop
+Seat 6: fbdde14e folded before Flop
+Seat 7: 3e9ba0b6 (button) folded on the Flop
+Seat 8: Hero (small blind) showed [Kd Js] and won (280) with two pair, Kings and Jacks

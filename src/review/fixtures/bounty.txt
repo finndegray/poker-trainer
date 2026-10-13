@@ -1,0 +1,62 @@
+Poker Hand #TM6532114653: Tournament #318083464, Bounty Hunters $2.50 Hold'em No Limit - Level2(60/120(18)) - 2026/10/13 11:41:03
+Table '25' 8-max Seat #1 is the button
+Seat 1: 80a2ad01 (10,646 in chips)
+Seat 2: f6039b65 (9,724 in chips)
+Seat 3: 5dff40ad (10,628 in chips)
+Seat 4: Hero (9,412 in chips)
+Seat 5: feb63507 (10,889 in chips)
+Seat 6: 57c0f97 (8,878 in chips)
+Seat 7: a463582d (20,251 in chips)
+Seat 8: 3c9caf34 (20,771 in chips)
+80a2ad01: posts the ante 18
+f6039b65: posts the ante 18
+5dff40ad: posts the ante 18
+Hero: posts the ante 18
+3c9caf34: posts the ante 18
+a463582d: posts the ante 18
+57c0f97: posts the ante 18
+feb63507: posts the ante 18
+f6039b65: posts small blind 60
+5dff40ad: posts big blind 120
+*** HOLE CARDS ***
+Dealt to 80a2ad01 
+Dealt to f6039b65 
+Dealt to 5dff40ad 
+Dealt to Hero [6c 6d]
+Dealt to feb63507 
+Dealt to 57c0f97 
+Dealt to a463582d 
+Dealt to 3c9caf34 
+Hero: raises 240 to 360
+feb63507: folds
+57c0f97: folds
+a463582d: folds
+3c9caf34: calls 360
+80a2ad01: folds
+f6039b65: folds
+5dff40ad: folds
+*** FLOP *** [8h 9c 7h]
+Hero: bets 522
+3c9caf34: calls 522
+*** TURN *** [8h 9c 7h] [Kd]
+Hero: bets 1,566
+3c9caf34: raises 2,046 to 3,612
+Hero: calls 2,046
+*** RIVER *** [8h 9c 7h Kd] [Ad]
+Hero: checks
+3c9caf34: bets 10,560
+Hero: folds
+Uncalled bet (10,560) returned to 3c9caf34
+*** SHOWDOWN ***
+3c9caf34 collected 9,312 from pot
+*** SUMMARY ***
+Total pot 9,312 | Rake 0 | Jackpot 0 | Bingo 0 | Fortune 0 | Tax 0
+Board [8h 9c 7h Kd Ad]
+Seat 1: 80a2ad01 (button) folded before Flop
+Seat 2: f6039b65 (small blind) folded before Flop
+Seat 3: 5dff40ad (big blind) folded before Flop
+Seat 4: Hero folded on the River
+Seat 5: feb63507 folded before Flop
+Seat 6: 57c0f97 folded before Flop
+Seat 7: a463582d folded before Flop
+Seat 8: 3c9caf34 won (9,312)

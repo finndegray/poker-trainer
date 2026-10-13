@@ -178,6 +178,19 @@ Rechenskript → `pushfold.json` (im Build enthalten) → `engine` liefert einen
 - Jeder Datensatz trägt eine Schema-Version. Beim Laden älterer Stände wird migriert.
 - Ist ein Spielstand nicht lesbar, wird er als Backup-Datei angeboten und erst danach durch einen neuen ersetzt. Ein stiller Datenverlust darf nicht passieren.
 - Export und Import des gesamten Spielstands als JSON-Datei. Das dient als Backup und zur manuellen Übertragung zwischen Geräten.
+- Ein laufender Endphase-Run wird mitgespeichert und nach einem Neuladen fortgesetzt.
+- Es wird nur gespeichert, was sich nachweislich wieder laden lässt (Prüfung vor jedem Schreiben).
+- Stammt ein Spielstand aus einer neueren App-Version, wird er nicht überschrieben. Die App fordert dann zum Aktualisieren auf.
+
+### 8.5 Anforderungen an die Oberfläche (Plan 3) aus dem Review von Plan 2
+
+- **Nur-Lesen-Modus:** Meldet `loadState` `readOnly: true`, zeigt die App einen Hinweis „Bitte aktualisieren“ und lässt kein Training zu, das scheinbar gespeichert wird.
+- **Defekter Spielstand:** Meldet `loadState` ein `corruptBackup`, bietet die App den Rohtext zum Download an. Backups bleiben später über die Einstellungen abrufbar und löschbar (`listBackups`, `readBackup`, `deleteBackup`).
+- **Speichern:** über eine Warteschlange, die schnelle Folgeänderungen zusammenfasst (der neueste Stand gewinnt, höchstens ein Schreibvorgang gleichzeitig). Beim Verlassen der Seite (`visibilitychange`/`pagehide`) wird sofort geschrieben.
+- **Mehrere Tabs:** Es darf nur ein Tab gleichzeitig schreiben (Web Locks oder BroadcastChannel). Andere Tabs zeigen einen Hinweis.
+- **Speicher-Persistenz:** `navigator.storage.persist()` anfragen, damit der Browser (vor allem Safari/iOS) den Spielstand nicht automatisch löscht.
+- **Import:** Vor einem Import wird der aktuelle Stand automatisch als Backup gesichert.
+- **Kein IndexedDB verfügbar** (z. B. privater Modus): Rückfall auf den Speicher im Arbeitsspeicher, mit dem deutlichen Hinweis, dass nichts dauerhaft gespeichert wird.
 
 ## 9. Qualitätssicherung
 

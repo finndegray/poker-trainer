@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { getPushFoldData } from '../app/data';
 import { parseCard } from '../engine/cards';
 import { rangeFromClasses, rangeWeight, removeCards } from '../engine/postflop/combos';
 import { chartFor } from '../engine/preflop/charts';
+import { analyzeHand } from './analysis';
+import bounty from './fixtures/bounty.txt?raw';
 import { positionsOf, walkHand } from './hand-model';
 import { parseHand } from './parse';
 import { type PostflopRating, ratePostflop } from './postflop';
@@ -102,5 +105,20 @@ describe('ratePostflop', () => {
     expect(afterBet).toBeDefined();
     expect(afterShove).toBeDefined();
     expect(afterShove / afterBet).toBeCloseTo(KEEP_AFTER_ALL_IN / KEEP_AFTER_BET, 6);
+  });
+});
+
+describe('analyzeHand with a real postflop hand', () => {
+  it('rates the postflop decisions of the bounty hand (66 against the CO caller, 100 BB)', () => {
+    const list = analyzeHand(parseHand(bounty), getPushFoldData()).decisions;
+    expect(list.map((d) => [d.street, d.action, d.rating.model === 'postflop' ? d.rating.verdict : d.rating.model])).toEqual([
+      ['preflop', 'raise', 'chart'],
+      ['flop', 'bet', 'ok'],
+      ['turn', 'bet', 'ok'],
+      ['turn', 'call', 'questionable'],
+      ['river', 'check', 'ok'],
+      ['river', 'fold', 'ok'],
+    ]);
+    expect(list[3].rating).toMatchObject({ reason: 'callThin', villainRole: 'caller', villainPosition: 'CO', bonus: 5, outs: 8 });
   });
 });

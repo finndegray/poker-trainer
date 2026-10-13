@@ -6,6 +6,7 @@ import { MAX_STACK, MIN_STACK, type PushFoldData } from '../engine/pushfold-data
 import { type Position, seatOf } from '../engine/positions';
 import { type TableState, playableChips } from './hand-model';
 import { type ActionEvent, HERO, type ParsedHand } from './parse';
+import type { PostflopRating } from './postflop';
 
 /** A raise to at least this share of the stack counts as all-in (spec 6). */
 export const SHOVE_SHARE = 0.8;
@@ -64,8 +65,7 @@ export type ChartRating = {
   approximation: boolean;
 };
 export type UnratedRating = { model: 'unrated'; reason: UnratedReason };
-/** Plan 8 adds a postflop rating to this union; Plan 7 never creates one. */
-export type DecisionRating = PushFoldRating | ChartRating | UnratedRating;
+export type DecisionRating = PushFoldRating | ChartRating | PostflopRating | UnratedRating;
 
 export type ModelChoice = { model: 'pushfold'; stack: number } | { model: 'chart'; depth: StackDepth; approximation: boolean };
 

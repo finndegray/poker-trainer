@@ -115,6 +115,16 @@ describe('ReviewScreen tournament', () => {
     expect(hands()).toHaveLength(3);
   });
 
+  it('shows a postflop "fraglich" under "Auch fraglich" but not under "Nur Fehler"', async () => {
+    await withHands(bounty);
+    await openTournament('Bounty Hunters $2.50');
+    expect(screen.getByRole('button', { name: /66 · UTG/ }).textContent).toContain('Fraglich');
+    fireEvent.click(screen.getByRole('button', { name: 'Nur Fehler' }));
+    expect(screen.getByText('Keine Hände für diesen Filter.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Auch fraglich' }));
+    expect(screen.getByRole('button', { name: /66 · UTG/ })).toBeTruthy();
+  });
+
   it('changes the kind: errors become hints and are not counted', async () => {
     await withHands();
     await openTournament('Daily Classic $1');
@@ -172,8 +182,11 @@ describe('ReviewScreen hand view', () => {
     expect(screen.getByRole('heading', { name: 'Richtig' })).toBeTruthy();
     fireEvent.keyDown(window, { key: 'ArrowRight' });
     expect(screen.getByText('Du bist dran – deine Wahl: Bet 4,4 BB')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Nicht bewertet' })).toBeTruthy();
-    expect(screen.getByText('Postflop-Bewertung folgt')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Passt' })).toBeTruthy();
+    expect(screen.getByText('Einsatz in üblicher Größe.')).toBeTruthy();
+    expect(screen.getByText('Einsatz 50 % vom Pot · SPR 8,7 · 8 Outs')).toBeTruthy();
+    expect(screen.getByText(/^Gegner CO: Call gegen deinen Open · Chart für 100 BB · etwa \d+ Kombinationen$/)).toBeTruthy();
+    expect(screen.getByText('Faustregel, kein Solver-Ergebnis')).toBeTruthy();
     expect(screen.getByLabelText('Board')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Schritt vor' }));
     expect(screen.getByText('CO: Call 4,4 BB')).toBeTruthy();

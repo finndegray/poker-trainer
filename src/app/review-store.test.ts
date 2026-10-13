@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { getPushFoldData } from './data';
+import { ANALYSIS_VERSION } from '../review/analysis';
 import {
   HAND_PREFIX,
   REVIEW_SCHEMA_VERSION,
@@ -97,9 +98,9 @@ describe('review store', () => {
     const old = { ...readHand(backend.dump()[key]), analysisVersion: 0, analysis: { version: 0, decisions: [] } };
     await backend.setMany([[key, JSON.stringify(old)]]);
     const open = await store.openTournament('318083464');
-    expect(open.hands[0].record.analysisVersion).toBe(1);
+    expect(open.hands[0].record.analysisVersion).toBe(ANALYSIS_VERSION);
     expect(open.hands[0].record.analysis.decisions).toHaveLength(6);
-    expect(readHand(backend.dump()[key]).analysisVersion).toBe(1);
+    expect(readHand(backend.dump()[key]).analysisVersion).toBe(ANALYSIS_VERSION);
   });
 
   it('changes the kind of a tournament and counts errors again', async () => {

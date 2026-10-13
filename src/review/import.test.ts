@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { getPushFoldData } from '../app/data';
+import { ANALYSIS_VERSION } from './analysis';
 import { memoryReviewBackend, tournamentKey, writeRecords } from './archive';
 import bounty from './fixtures/bounty.txt?raw';
 import dailyClassic from './fixtures/daily-classic.txt?raw';
@@ -162,7 +163,9 @@ describe('records', () => {
     const records = hands.map((hand) => handRecordOf({ hand, analysis: { version: 1, decisions: [] } }));
     expect(records[0]).toMatchObject({ reviewSchemaVersion: 1, id: 'TM6532799440', tournamentId: '318586827', dateKey: '2026-10-13', analysisVersion: 1 });
     const fresh = tournamentRecordOf('318586827', '$0.50 Step to The Weekender', records, null);
-    expect(fresh).toMatchObject({ detectedKind: 'satellit', kind: 'satellit', handIds: ['TM6532799440'], firstPlayedAt: '2026-10-13 11:31:49' });
+    expect(fresh).toMatchObject({ detectedKind: 'satellit', kind: 'satellit', handIds: ['TM6532799440'], firstPlayedAt: '2026-10-13 11:31:49', analysisVersion: 1 });
+    const current = records.map((r) => ({ ...r, analysisVersion: ANALYSIS_VERSION }));
+    expect(tournamentRecordOf('318586827', 'x', current, null).analysisVersion).toBe(ANALYSIS_VERSION);
     const changed = tournamentRecordOf('318586827', 'egal', records, { ...fresh, kind: 'normal' });
     expect(changed).toMatchObject({ name: '$0.50 Step to The Weekender', detectedKind: 'satellit', kind: 'normal' });
     expect(tournamentRecordOf('318586827', 'x', records, fresh, 'bounty').kind).toBe('bounty');

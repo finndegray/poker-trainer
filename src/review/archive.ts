@@ -22,6 +22,8 @@ export type TournamentRecord = {
   firstPlayedAt: string;
   lastPlayedAt: string;
   handIds: string[];
+  /** The oldest analysis version among its hands, i.e. what the summary is built from; missing before Plan 8 (= 1). */
+  analysisVersion?: number;
   summary: TournamentSummary;
 };
 export type HandRecord = {
@@ -78,7 +80,12 @@ function parseRecord(text: string): Obj {
 
 function isSummary(v: unknown): v is TournamentSummary {
   if (!isObject(v) || !isCount(v.hands) || !isCount(v.preflopErrors) || !isCount(v.postflopErrors) || !isCount(v.hints)) return false;
-  return isObject(v.days) && Object.values(v.days).every((d) => isObject(d) && isCount(d.hands) && isCount(d.preflopErrors));
+  return (
+    isObject(v.days) &&
+    Object.values(v.days).every(
+      (d) => isObject(d) && isCount(d.hands) && isCount(d.preflopErrors) && (d.postflopErrors === undefined || isCount(d.postflopErrors)),
+    )
+  );
 }
 
 export function readTournament(text: string): TournamentRecord {
@@ -86,6 +93,7 @@ export function readTournament(text: string): TournamentRecord {
   if (!isString(r.id) || !isString(r.name) || !isTournamentKind(r.detectedKind) || !isTournamentKind(r.kind)) corrupt('Turnier');
   if (!isString(r.firstPlayedAt) || !isString(r.lastPlayedAt)) corrupt('Turnierdatum');
   if (!Array.isArray(r.handIds) || !r.handIds.every(isString)) corrupt('Hand-Liste');
+  if (r.analysisVersion !== undefined && !isCount(r.analysisVersion)) corrupt('Analyse-Version');
   if (!isSummary(r.summary)) corrupt('Zusammenfassung');
   return r as unknown as TournamentRecord;
 }
@@ -93,9 +101,15 @@ export function readTournament(text: string): TournamentRecord {
 const VERDICTS = ['correct', 'close', 'wrong'];
 const isPosition = (v: unknown) => isString(v) && (POSITIONS as readonly string[]).includes(v);
 
+const POSTFLOP_VERDICTS = ['ok', 'questionable', 'mistake'];
+const isShare = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
 function isRating(v: unknown): boolean {
   if (!isObject(v)) return false;
   if (v.model === 'unrated') return isString(v.reason);
+  if (v.model === 'postflop') {
+    return POSTFLOP_VERDICTS.includes(v.verdict as string) && isString(v.reason) && isShare(v.equity) && isShare(v.needed) && isShare(v.spr);
+  }
   if (!isObject(v.grade) || !VERDICTS.includes(v.grade.verdict as string) || !isString(v.chosen)) return false;
   if (v.model === 'chart') return isPreflopSpot(v.spot) && typeof v.approximation === 'boolean';
   if (v.model !== 'pushfold' || !isObject(v.spot)) return false;

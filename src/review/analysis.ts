@@ -1,10 +1,11 @@
 import type { PushFoldData } from '../engine/pushfold-data';
 import { maxStreetBet, positionsOf, walkHand } from './hand-model';
 import { HERO, type ActionType, type ParsedHand, type Street } from './parse';
+import { ratePostflop } from './postflop';
 import { type DecisionRating, ratePreflopDecision } from './preflop';
 
 /** Bump when the rating logic changes: archived hands with another version are rated again when opened. */
-export const ANALYSIS_VERSION = 1;
+export const ANALYSIS_VERSION = 2;
 
 export type HeroDecision = {
   /** Index into `ParsedHand.events`. */
@@ -26,6 +27,7 @@ export type HandAnalysis = { version: number; decisions: HeroDecision[] };
 export function analyzeHand(hand: ParsedHand, data: PushFoldData): HandAnalysis {
   const positions = positionsOf(hand);
   const states = walkHand(hand, positions);
+  const postflop = ratePostflop(hand, states, positions);
   const decisions: HeroDecision[] = [];
   hand.events.forEach((event, index) => {
     if (event.type !== 'action' || event.player !== HERO) return;
@@ -34,7 +36,7 @@ export function analyzeHand(hand: ParsedHand, data: PushFoldData): HandAnalysis 
     const rating: DecisionRating =
       event.street === 'preflop'
         ? ratePreflopDecision(hand, index, state, positions, data)
-        : { model: 'unrated', reason: 'postflopPending' };
+        : postflop.get(index)!;
     decisions.push({
       eventIndex: index,
       street: event.street,

@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
 import type { PushFoldData } from '../engine/pushfold-data';
-import { type HandAnalysis, analyzeHand } from './analysis';
+import { ANALYSIS_VERSION, type HandAnalysis, analyzeHand } from './analysis';
 import { ArchiveFormatError, type HandRecord, REVIEW_SCHEMA_VERSION, type TournamentRecord } from './archive';
 import { type ParsedHand, type SkippedHand, parseHistory } from './parse';
 import { summarize } from './summary';
@@ -199,6 +199,7 @@ export function tournamentRecordOf(
   const sorted = [...hands].sort((a, b) => a.playedAt.localeCompare(b.playedAt) || a.id.localeCompare(b.id));
   const detectedKind = previous?.detectedKind ?? detectTournamentKind(name);
   const kind = kindOverride ?? previous?.kind ?? detectedKind;
+  const analysisVersion = sorted.length === 0 ? ANALYSIS_VERSION : Math.min(...sorted.map((h) => h.analysisVersion));
   return {
     reviewSchemaVersion: REVIEW_SCHEMA_VERSION,
     id,
@@ -208,6 +209,7 @@ export function tournamentRecordOf(
     firstPlayedAt: sorted[0]?.playedAt ?? '',
     lastPlayedAt: sorted[sorted.length - 1]?.playedAt ?? '',
     handIds: sorted.map((h) => h.id),
+    analysisVersion,
     summary: summarize(sorted, kind),
   };
 }

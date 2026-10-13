@@ -83,7 +83,7 @@ describe('chart spots (more than 20 BB)', () => {
     const r = rate({ hero: 'CO', heroCards: 'Ah Kd', lines: [...lines, '*** FLOP *** [2c 7d 9h]', 'Hero: checks', 'BTN: checks'] });
     expect(r[0]).toMatchObject({ model: 'chart', spot: { kind: 'rfi', hero: 'CO' }, chosen: 'raise' });
     expect(r[1]).toMatchObject({ model: 'chart', spot: { kind: 'vs3bet', stack: 100, hero: 'CO', villain: 'BTN' }, chosen: 'call' });
-    expect(r[2]).toEqual({ model: 'unrated', reason: 'postflopPending' });
+    expect(r[2]).toMatchObject({ model: 'postflop', villainRole: 'threeBettor', villainPosition: 'BTN', verdict: 'ok', reason: 'checkOk' });
   });
 
   it('does not grade a call of a 3-bet shove with the vs3bet chart', () => {
@@ -207,12 +207,12 @@ describe('analyzeHand with the real hands', () => {
     ]);
   });
 
-  it('postflop decisions are listed with "Postflop-Bewertung folgt"', () => {
+  it('postflop decisions keep their numbers and get a postflop rating', () => {
     const list = decisions('TM6532114653');
     expect(list.map((d) => [d.street, d.action])).toEqual([
       ['preflop', 'raise'], ['flop', 'bet'], ['turn', 'bet'], ['turn', 'call'], ['river', 'check'], ['river', 'fold'],
     ]);
-    expect(list.slice(1).every((d) => d.rating.model === 'unrated' && d.rating.reason === 'postflopPending')).toBe(true);
+    expect(list.slice(1).every((d) => d.rating.model === 'postflop')).toBe(true);
     expect(list[3]).toMatchObject({ pot: 7266, toCall: 2046, stack: 6946 });
   });
 

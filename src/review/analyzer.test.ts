@@ -25,10 +25,10 @@ function fakeWorker(log: WorkerRequest['type'][]): WorkerPort {
     terminate: () => {},
     postMessage(request) {
       log.push(request.type);
-      handle(request);
+      handle(structuredClone(request));
     },
   };
-  const handle = createWorkerHandler((message) => setTimeout(() => port.onmessage?.({ data: message } as MessageEvent<WorkerResponse>), 0));
+  const handle = createWorkerHandler((message) => setTimeout(() => port.onmessage?.({ data: structuredClone(message) } as MessageEvent<WorkerResponse>), 0));
   return port;
 }
 
@@ -88,5 +88,55 @@ describe('worker analyzer', () => {
     port!.onerror?.({} as ErrorEvent);
     expect(await pending).toEqual(expected);
     expect(await failing.analyze(hands.slice(0, 1))).toEqual(expected.slice(0, 1));
+  });
+
+  describe('worker boundary', () => {
+    const fallback = () => createInlineAnalyzer(data, async () => {});
+    const silent = (over: Partial<WorkerPort> = {}): WorkerPort => ({ onmessage: null, onerror: null, onmessageerror: null, terminate: () => {}, postMessage: () => {}, ...over });
+    const reply = (port: WorkerPort, message: unknown) => port.onmessage?.({ data: message } as MessageEvent<WorkerResponse>);
+
+    it('falls back when posting the init message throws', async () => {
+      const analyzer = createWorkerAnalyzer(data, () => silent({ postMessage: () => { throw new Error('DataCloneError'); } }), fallback());
+      expect(await analyzer.analyze(hands)).toEqual(expected);
+    });
+
+    it('falls back when posting a job throws, also for jobs queued before', async () => {
+      let calls = 0;
+      const analyzer = createWorkerAnalyzer(
+        data,
+        () => silent({ postMessage: () => { if (++calls === 2) throw new Error('DataCloneError'); } }),
+        fallback(),
+      );
+      expect(await analyzer.analyze(hands)).toEqual(expected);
+      expect(await analyzer.analyze(hands.slice(0, 2))).toEqual(expected.slice(0, 2));
+    });
+
+    it('falls back on a message error', async () => {
+      let port!: WorkerPort;
+      const analyzer = createWorkerAnalyzer(data, () => (port = silent()), fallback());
+      const pending = analyzer.analyze(hands);
+      port.onmessageerror?.({} as MessageEvent);
+      expect(await pending).toEqual(expected);
+    });
+
+    it('falls back on a done reply with the wrong number of analyses', async () => {
+      let port!: WorkerPort;
+      const analyzer = createWorkerAnalyzer(data, () => (port = silent()), fallback());
+      const pending = analyzer.analyze(hands);
+      reply(port, { type: 'done', id: 1, analyses: expected.slice(1) });
+      expect(await pending).toEqual(expected);
+    });
+
+    it('ignores unknown ids and unknown or malformed messages', async () => {
+      let port!: WorkerPort;
+      const analyzer = createWorkerAnalyzer(data, () => (port = silent()), fallback());
+      const pending = analyzer.analyze(hands.slice(0, 2));
+      reply(port, { type: 'done', id: 99, analyses: [] });
+      reply(port, { type: 'weird', id: 1 });
+      reply(port, null);
+      reply(port, { type: 'done', analyses: [] });
+      reply(port, { type: 'done', id: 1, analyses: expected.slice(0, 2) });
+      expect(await pending).toEqual(expected.slice(0, 2));
+    });
   });
 });

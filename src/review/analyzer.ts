@@ -65,6 +65,7 @@ export type WorkerPort = {
   postMessage(message: WorkerRequest): void;
   onmessage: ((event: MessageEvent<WorkerResponse>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
+  onmessageerror?: ((event: MessageEvent) => void) | null;
   terminate(): void;
 };
 
@@ -104,19 +105,31 @@ export function createWorkerAnalyzer(data: PushFoldData, spawn: () => WorkerPort
       return null;
     }
     port.onmessage = ({ data: message }) => {
+      // The worker is outside our code: anything that does not look like a reply to a running job is ignored.
+      if (typeof message?.id !== 'number') return;
       const job = jobs.get(message.id);
       if (!job) return;
-      if (message.type === 'progress') job.onProgress?.(message.done);
-      else {
+      if (message.type === 'progress') {
+        if (typeof message.done === 'number') job.onProgress?.(message.done);
+      } else if (message.type === 'done') {
+        // A reply that does not fit the job means the worker cannot be trusted: give up and rate on the fallback.
+        if (!Array.isArray(message.analyses) || message.analyses.length !== job.hands.length) return giveUp();
         jobs.delete(message.id);
-        if (message.type === 'done') {
-          job.onProgress?.(job.hands.length);
-          job.resolve(message.analyses);
-        } else job.reject(new Error(`Analyse fehlgeschlagen: ${message.message}`));
+        job.onProgress?.(job.hands.length);
+        job.resolve(message.analyses);
+      } else if (message.type === 'error') {
+        jobs.delete(message.id);
+        job.reject(new Error(`Analyse fehlgeschlagen: ${message.message}`));
       }
     };
     port.onerror = giveUp;
-    port.postMessage({ type: 'init', data });
+    port.onmessageerror = giveUp;
+    try {
+      port.postMessage({ type: 'init', data });
+    } catch {
+      giveUp();
+      return null;
+    }
     return port;
   };
 
@@ -128,7 +141,14 @@ export function createWorkerAnalyzer(data: PushFoldData, spawn: () => WorkerPort
       return new Promise((resolve, reject) => {
         const id = nextId++;
         jobs.set(id, { hands, onProgress, resolve, reject });
-        worker.postMessage({ type: 'analyze', id, raws: hands.map((h) => h.raw) });
+        try {
+          worker.postMessage({ type: 'analyze', id, raws: hands.map((h) => h.raw) });
+        } catch {
+          // The job never reached the worker: give up on it and run this job (and all later ones) on the fallback.
+          jobs.delete(id);
+          giveUp();
+          fallback.analyze(hands, onProgress).then(resolve, reject);
+        }
       });
     },
   };

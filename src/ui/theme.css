@@ -113,3 +113,9 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.app-loading {
+  text-align: center;
+  margin-top: 40vh;
+  color: var(--cream-muted);
+}

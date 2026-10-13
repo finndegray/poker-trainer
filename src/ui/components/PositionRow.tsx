@@ -1,23 +1,22 @@
-import { formatEv } from '../../app/format';
-import type { PositionComparison } from '../../engine/position-compare';
-import { POSITION_LABELS } from '../../engine/positions';
-import { CELL_CLASS, cellText } from './chart-cells';
+import { POSITION_LABELS, type Position } from '../../engine/positions';
 
-export function PositionRow({ comparison, word }: { comparison: PositionComparison; word: 'Push' | 'Call' }) {
+export type PositionItem = { position: Position; cellClass: string; title: string; current: boolean };
+
+export function PositionRow({ items, summary }: { items: readonly PositionItem[]; summary: string }) {
   return (
     <div className="position-row">
       <ol className="position-row__list">
-        {comparison.entries.map((entry) => (
+        {items.map((item) => (
           <li
-            key={entry.position}
-            className={`position-row__item ${CELL_CLASS[entry.cell]}${entry.isHero ? ' position-row__item--hero' : ''}`}
-            title={`${POSITION_LABELS[entry.position]}: ${cellText(entry.cell, word)} (${formatEv(entry.ev)})`}
+            key={item.position}
+            className={`position-row__item ${item.cellClass}${item.current ? ' position-row__item--hero' : ''}`}
+            title={item.title}
           >
-            {POSITION_LABELS[entry.position]}
+            {POSITION_LABELS[item.position]}
           </li>
         ))}
       </ol>
-      <p className="position-row__summary">{comparison.summary}</p>
+      <p className="position-row__summary">{summary}</p>
     </div>
   );
 }

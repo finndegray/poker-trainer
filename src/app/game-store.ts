@@ -1,17 +1,24 @@
 import { type Card, dealConcrete } from '../engine/cards';
 import { type PositionComparison, comparePositions } from '../engine/position-compare';
 import { type Action, type ChartCell, type Spot, chart } from '../engine/pushfold';
+import { chartFor } from '../engine/preflop/charts';
+import { type PreflopCell, type PreflopComparison, comparePreflopPositions, preflopCells } from '../engine/preflop/grading';
+import type { PreflopAction, PreflopSpot } from '../engine/preflop/spots';
 import type { PushFoldData } from '../engine/pushfold-data';
 import type { Rng } from '../engine/rng';
 import { type DailyResult, dailySpots } from '../game/daily';
 import { nextRunSpot } from '../game/endphase-run';
+import { type PreflopFilter, isPreflopFilter, preflopFilterOf, samePreflopFilter } from '../game/preflop-filter';
 import {
   type DecisionOutcome,
+  type PreflopDecisionOutcome,
   type SessionStatus,
   answerActiveRun,
+  nextPreflopTrainingSpot,
   nextTrainingSpot,
   recordDaily,
   recordDecision,
+  recordPreflopDecision,
   recordRun,
   setSound,
   startActiveRun,
@@ -24,6 +31,21 @@ import { type RunSummary, type SaveState, deserialize, serialize } from '../stor
 import type { BackupApi, Persistence, PersistenceInfo } from './persistence';
 
 export type TrainingSpot = { spot: Spot; cards: readonly [Card, Card]; shownAt: number };
+export type PreflopDeal = { spot: PreflopSpot; cards: readonly [Card, Card]; shownAt: number };
+export type PreflopAnswerResult = {
+  outcome: PreflopDecisionOutcome;
+  comparison: PreflopComparison;
+  cells: PreflopCell[];
+  /** The chart's German learning sentence. */
+  note: string;
+};
+
+export function preflopAnswerResult(outcome: PreflopDecisionOutcome): PreflopAnswerResult {
+  const spot = outcome.record.spot;
+  const chart = chartFor(spot);
+  return { outcome, comparison: comparePreflopPositions(spot), cells: preflopCells(chart), note: chart.note };
+}
+
 export type AnswerResult = { outcome: DecisionOutcome; comparison: PositionComparison; chart: ChartCell[] };
 export type Notice = 'writer-acquired' | 'update-available';
 export type DailyOutcome = { result: DailyResult; accepted: boolean; isPersonalBest: boolean };
@@ -50,6 +72,9 @@ export type GameSnapshot = {
   notice: Notice | null;
   session: Session;
   celebration: RankName | null;
+  /** The starthand training runs beside the push/fold session and never changes it. */
+  preflopCurrent: PreflopDeal | null;
+  preflopLast: PreflopAnswerResult | null;
 };
 export type GameStoreDeps = {
   data: PushFoldData;
@@ -84,6 +109,13 @@ export type GameStore = {
   getBackups(): BackupApi;
   /** Time while the app is hidden does not count for the current spot or the daily duration. */
   onVisibilityChange(visible: boolean): void;
+  /** Enters the starthand training: keeps an unanswered spot (restarting its timer), otherwise deals a new one. */
+  startPreflop(): void;
+  /** Deals the next starthand spot from the filter in the profile. */
+  nextPreflopSpot(): void;
+  answerPreflop(action: PreflopAction): PreflopAnswerResult;
+  /** Remembers the filter in the profile; an unanswered spot is replaced by one that fits. */
+  setPreflopFilter(filter: PreflopFilter): void;
 };
 
 export function createGameStore(deps: GameStoreDeps): GameStore {
@@ -98,6 +130,8 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
     notice: null,
     session: { kind: 'training' },
     celebration: null,
+    preflopCurrent: null,
+    preflopLast: null,
   };
   // Remembered separately, so the update notice comes back after the writer notice is dismissed.
   let updateAvailable = false;
@@ -203,6 +237,8 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
         session: { kind: 'training' },
         celebration: null,
         notice: 'writer-acquired',
+        preflopCurrent: null,
+        preflopLast: null,
       });
     },
     setUpdateAvailable() {
@@ -299,7 +335,14 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
     async importState(text) {
       const imported = deserialize(text);
       await persistence.backups.create(serialize(snapshot.save));
-      commit(imported, { session: { kind: 'training' }, current: null, last: null, celebration: null });
+      commit(imported, {
+        session: { kind: 'training' },
+        current: null,
+        last: null,
+        celebration: null,
+        preflopCurrent: null,
+        preflopLast: null,
+      });
     },
     getBackups() {
       return persistence.backups;
@@ -314,9 +357,49 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
       hiddenSince = null;
       const patch: Partial<GameSnapshot> = {};
       if (snapshot.current && !snapshot.last) patch.current = { ...snapshot.current, shownAt: snapshot.current.shownAt + hidden };
+      if (snapshot.preflopCurrent && !snapshot.preflopLast) {
+        patch.preflopCurrent = { ...snapshot.preflopCurrent, shownAt: snapshot.preflopCurrent.shownAt + hidden };
+      }
       const s = snapshot.session;
       if (s.kind === 'daily' && !s.outcome) patch.session = { ...s, startedAt: s.startedAt + hidden };
-      if (patch.current || patch.session) update(patch);
+      if (patch.current || patch.session || patch.preflopCurrent) update(patch);
+    },
+    startPreflop() {
+      assertPlayable();
+      const current = snapshot.preflopCurrent;
+      if (!current || snapshot.preflopLast) store.nextPreflopSpot();
+      else update({ preflopCurrent: { ...current, shownAt: clock() } });
+    },
+    nextPreflopSpot() {
+      assertPlayable();
+      const spot = nextPreflopTrainingSpot(snapshot.save, rng);
+      update({ preflopCurrent: { spot, cards: dealConcrete(spot.hand, rng), shownAt: clock() }, preflopLast: null });
+    },
+    answerPreflop(action) {
+      const current = snapshot.preflopCurrent;
+      if (!current) throw new Error('Kein Spot aktiv');
+      if (snapshot.preflopLast) throw new Error('Dieser Spot ist bereits beantwortet');
+      const outcome = recordPreflopDecision(snapshot.save, {
+        spot: current.spot,
+        chosen: action,
+        responseMs: clock() - current.shownAt,
+        now: now(),
+      });
+      const result = preflopAnswerResult(outcome);
+      commit(outcome.state, {
+        preflopLast: result,
+        celebration: outcome.rank.rankUp ? outcome.rank.after : snapshot.celebration,
+      });
+      return result;
+    },
+    setPreflopFilter(filter) {
+      assertPlayable();
+      if (!isPreflopFilter(filter)) throw new Error('Ungültiger Starthand-Filter');
+      if (samePreflopFilter(filter, preflopFilterOf(snapshot.save.profile))) return;
+      const preflopFilter: PreflopFilter = { kind: filter.kind, stack: filter.stack };
+      commit({ ...snapshot.save, profile: { ...snapshot.save.profile, preflopFilter } });
+      // An unanswered spot may not fit the new filter; an answered one keeps its feedback.
+      if (snapshot.preflopCurrent && !snapshot.preflopLast) store.nextPreflopSpot();
     },
   };
   return store;

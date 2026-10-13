@@ -3,7 +3,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { parseHand } from '../../engine/cards';
 import type { Spot, Verdict } from '../../engine/pushfold';
-import type { DecisionRecord } from '../../game/stats';
+import type { DecisionRecord, PreflopRecord } from '../../game/stats';
 import { emptyState, type SaveState } from '../../storage/schema';
 import { renderWithStore } from '../test-utils';
 import { StatsScreen } from './StatsScreen';
@@ -60,5 +60,51 @@ describe('StatsScreen', () => {
     expect(screen.getByText('12.10.: Platz 1.240')).toBeTruthy();
     const dailies = screen.getAllByText(/^1[0-9]\.10\.: \d+\/20$/).map((el) => el.textContent);
     expect(dailies).toEqual(['13.10.: 18/20', '12.10.: 15/20']);
+  });
+
+  it('counts only push/fold decisions in the push/fold numbers', () => {
+    const pre: PreflopRecord = {
+      ts: 99, dateKey: '2026-10-13', mode: 'training', game: 'preflop',
+      spot: { kind: 'rfi', stack: 100, hero: 'BTN', villain: null, hand: parseHand('A7o') },
+      chosen: 'raise', verdict: 'correct', responseMs: 1000,
+    };
+    const s = state();
+    renderWithStore(<StatsScreen onBack={() => {}} />, { initial: { ...s, decisions: [...s.decisions, pre, pre, pre] } });
+    const tiles = within(screen.getAllByText('Ø Antwortzeit')[0].closest('.stats-tiles') as HTMLElement);
+    expect(tiles.getByText('50 %')).toBeTruthy();
+    expect(tiles.getByText('4')).toBeTruthy();
+    expect(screen.getAllByTitle('A7o: 1 von 3 falsch')).toHaveLength(1);
+  });
+
+  const starthand = (verdict: Verdict): PreflopRecord => ({
+    ts: ++ts, dateKey: '2026-10-13', mode: 'training', game: 'preflop',
+    spot: { kind: 'rfi', stack: 100, hero: 'BTN', villain: null, hand: parseHand('A7o') },
+    chosen: 'raise', verdict, responseMs: 1000,
+  });
+
+  it('separates the push/fold numbers from the starthand section', () => {
+    const s = state();
+    renderWithStore(<StatsScreen onBack={() => {}} />, {
+      initial: { ...s, decisions: [...s.decisions, starthand('correct'), starthand('correct'), starthand('correct')] },
+    });
+    const pushFold = within(screen.getByRole('region', { name: 'Push/Fold' }));
+    const pfTiles = within(pushFold.getByText('Ø Antwortzeit').closest('.stats-tiles') as HTMLElement);
+    expect(pfTiles.getByText('50 %')).toBeTruthy();
+    expect(pfTiles.getByText('4')).toBeTruthy();
+    expect(pushFold.getByTitle('A7o: 1 von 3 falsch')).toBeTruthy();
+    const starthands = within(screen.getByRole('region', { name: 'Starthände' }));
+    const shTiles = within(starthands.getByText('Ø Antwortzeit').closest('.stats-tiles') as HTMLElement);
+    expect(shTiles.getByText('100 %')).toBeTruthy();
+    expect(shTiles.getByText('3')).toBeTruthy();
+    expect(shTiles.getByText('1,0 s')).toBeTruthy();
+    expect(starthands.getByTitle('A7o: 0 von 3 falsch')).toBeTruthy();
+  });
+
+  it('shows the starthand section without push/fold decisions', () => {
+    renderWithStore(<StatsScreen onBack={() => {}} />, { initial: { ...emptyState(), decisions: [starthand('wrong')] } });
+    expect(screen.queryByText(/Noch keine Entscheidungen/)).toBeNull();
+    expect(screen.getByText('Noch keine Push/Fold-Entscheidungen.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Starthände' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Starthände nach Spot-Typ' })).toBeTruthy();
   });
 });

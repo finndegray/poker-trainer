@@ -4,6 +4,7 @@ import { Notices } from './components/Notices';
 import { useGame, useGameStore } from './GameContext';
 import { HomeScreen, type Screen } from './screens/HomeScreen';
 import { PlayScreen } from './screens/PlayScreen';
+import { PreflopScreen } from './screens/PreflopScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { StatsScreen } from './screens/StatsScreen';
 import { type SoundPlayer, silentPlayer } from './sound';
@@ -33,6 +34,7 @@ export function App({ onApplyUpdate, sound = silentPlayer }: { onApplyUpdate?: (
         />
         {screen === 'home' && <HomeScreen onNavigate={setScreen} />}
         {(screen === 'training' || screen === 'daily' || screen === 'run') && <PlayScreen key={screen} mode={screen} onBack={home} />}
+        {screen === 'preflop' && <PreflopScreen onBack={home} />}
         {screen === 'stats' && <StatsScreen onBack={home} />}
         {screen === 'settings' && <SettingsScreen onBack={home} />}
       </main>

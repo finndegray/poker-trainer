@@ -1,12 +1,14 @@
 import { type HandClass, handName } from '../../engine/cards';
-import type { ChartCell } from '../../engine/pushfold';
-import { CELL_CLASS, cellText } from './chart-cells';
 
-const LEGEND: ChartCell[] = ['aggressive', 'close-aggressive', 'close-fold', 'fold'];
+type Props<C extends string> = {
+  cells: readonly C[];
+  heroHand: HandClass;
+  legend: readonly C[];
+  cellClass: (cell: C) => string;
+  cellLabel: (cell: C) => string;
+};
 
-type Props = { cells: readonly ChartCell[]; heroHand: HandClass; word: 'Push' | 'Call' };
-
-export function RangeChart({ cells, heroHand, word }: Props) {
+export function RangeChart<C extends string>({ cells, heroHand, legend, cellClass, cellLabel }: Props<C>) {
   return (
     <figure className="range-chart">
       <div className="range-chart__grid">
@@ -15,8 +17,8 @@ export function RangeChart({ cells, heroHand, word }: Props) {
           return (
             <div
               key={hand}
-              className={`range-chart__cell ${CELL_CLASS[cell]}${isHero ? ' range-chart__cell--hero' : ''}`}
-              title={`${handName(hand)}: ${cellText(cell, word)}`}
+              className={`range-chart__cell ${cellClass(cell)}${isHero ? ' range-chart__cell--hero' : ''}`}
+              title={`${handName(hand)}: ${cellLabel(cell)}`}
               aria-current={isHero ? 'true' : undefined}
             >
               {handName(hand)}
@@ -25,10 +27,10 @@ export function RangeChart({ cells, heroHand, word }: Props) {
         })}
       </div>
       <figcaption className="range-chart__legend">
-        {LEGEND.map((cell) => (
+        {legend.map((cell) => (
           <span key={cell} className="range-chart__legend-item">
-            <span className={`range-chart__swatch ${CELL_CLASS[cell]}`} aria-hidden="true" />
-            {cellText(cell, word)}
+            <span className={`range-chart__swatch ${cellClass(cell)}`} aria-hidden="true" />
+            {cellLabel(cell)}
           </span>
         ))}
       </figcaption>

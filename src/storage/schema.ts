@@ -3,7 +3,9 @@ import { OPEN_POSITIONS, type Position, callerPositions } from '../engine/positi
 import { MAX_STACK, MIN_STACK } from '../engine/pushfold-data';
 import { DAILY_SPOT_COUNT, type DailyResult } from '../game/daily';
 import type { RunState } from '../game/endphase-run';
-import type { DecisionRecord } from '../game/stats';
+import { type PreflopAction, type PreflopSpot, allowedActions, isPreflopSpot } from '../engine/preflop/spots';
+import { type PreflopFilter, isPreflopFilter } from '../game/preflop-filter';
+import type { DecisionRecord, PreflopRecord, PushFoldRecord } from '../game/stats';
 
 export const SCHEMA_VERSION = 1;
 export const MAX_DECISIONS = 5000;
@@ -17,7 +19,13 @@ export type RunSummary = {
   levelsCompleted: number;
   bonusXp: number;
 };
-export type Profile = { xp: number; combo: number; soundOn: boolean };
+export type Profile = {
+  xp: number;
+  combo: number;
+  soundOn: boolean;
+  /** Added with the starthand training; missing means all spot types and stacks. */
+  preflopFilter?: PreflopFilter;
+};
 /** An unfinished daily challenge: `index` is the next spot to play (= spots answered so far). */
 export type DailyProgress = { dateKey: string; index: number; correct: number; elapsedMs: number };
 export type SaveState = {
@@ -85,10 +93,35 @@ function isSpot(v: unknown): boolean {
   return false;
 }
 
-function isDecision(v: unknown): boolean {
-  return isObject(v) && isNumber(v.ts) && isString(v.dateKey) && MODES.includes(v.mode as string)
-    && isSpot(v.spot) && ACTIONS.includes(v.chosen as string) && VERDICTS.includes(v.verdict as string)
-    && isCount(v.responseMs);
+function hasDecisionBase(v: Obj): boolean {
+  return isNumber(v.ts) && isString(v.dateKey) && MODES.includes(v.mode as string)
+    && VERDICTS.includes(v.verdict as string) && isCount(v.responseMs);
+}
+
+const isPushFoldDecision = (v: Obj): boolean => hasDecisionBase(v) && isSpot(v.spot) && ACTIONS.includes(v.chosen as string);
+
+const isPreflopDecision = (v: Obj): boolean =>
+  hasDecisionBase(v) && isPreflopSpot(v.spot)
+  && allowedActions((v.spot as PreflopSpot).kind).includes(v.chosen as PreflopAction);
+
+/**
+ * Push/fold records (no `game` key or 'pushfold') must be valid, as before the starthand training.
+ * Starthand records and records of unknown games that fail validation are dropped, so they never block loading.
+ */
+function readDecisions(list: unknown): DecisionRecord[] {
+  if (!Array.isArray(list)) fail('Entscheidungen ungültig');
+  const out: DecisionRecord[] = [];
+  for (const v of list) {
+    if (!isObject(v)) fail('Entscheidungen ungültig');
+    const game = 'game' in v ? v.game : 'pushfold';
+    if (game === 'pushfold') {
+      if (!isPushFoldDecision(v)) fail('Entscheidungen ungültig');
+      out.push(v as PushFoldRecord);
+    } else if (game === 'preflop' && isPreflopDecision(v)) {
+      out.push(v as PreflopRecord);
+    }
+  }
+  return out;
 }
 
 function isDaily(v: unknown): boolean {
@@ -128,8 +161,11 @@ export function migrate(raw: unknown): SaveState {
 
   const p = raw.profile;
   if (!isObject(p) || !isCount(p.xp) || !isCount(p.combo) || typeof p.soundOn !== 'boolean') fail('Profil ungültig');
+  // Additive field: a missing or invalid filter falls back to "all spots" instead of failing.
+  const rawFilter = p.preflopFilter;
+  const preflopFilter = isPreflopFilter(rawFilter) ? { kind: rawFilter.kind, stack: rawFilter.stack } : null;
   if (!isObject(raw.days) || !Object.values(raw.days).every(isCount)) fail('Tageszähler ungültig');
-  if (!Array.isArray(raw.decisions) || !raw.decisions.every(isDecision)) fail('Entscheidungen ungültig');
+  const decisions = readDecisions(raw.decisions);
   if (!isObject(raw.daily) || !Object.values(raw.daily).every(isDaily)) fail('Daily-Ergebnisse ungültig');
   if (!Array.isArray(raw.runs) || !raw.runs.every(isRun)) fail('Runs ungültig');
   if (raw.bestRun !== null && !isRun(raw.bestRun)) fail('Bester Run ungültig');
@@ -140,9 +176,9 @@ export function migrate(raw: unknown): SaveState {
 
   return {
     schemaVersion: SCHEMA_VERSION,
-    profile: { xp: p.xp, combo: p.combo, soundOn: p.soundOn },
+    profile: { xp: p.xp, combo: p.combo, soundOn: p.soundOn, ...(preflopFilter ? { preflopFilter } : {}) },
     days: { ...(raw.days as Record<string, number>) },
-    decisions: [...(raw.decisions as DecisionRecord[])],
+    decisions,
     daily: { ...(raw.daily as Record<string, DailyResult>) },
     runs: [...(raw.runs as RunSummary[])],
     bestRun: raw.bestRun as RunSummary | null,

@@ -10,6 +10,8 @@ export function useGameSounds(player: SoundPlayer): void {
   const spot = game.current?.spot;
   const last = game.last;
   const celebration = game.celebration;
+  const preflopSpot = game.preflopCurrent?.spot;
+  const preflopLast = game.preflopLast;
 
   useEffect(() => {
     const unlock = () => player.unlock();
@@ -29,6 +31,14 @@ export function useGameSounds(player: SoundPlayer): void {
   useEffect(() => {
     if (on && last) player.play(last.outcome.grade.verdict === 'wrong' ? 'wrong' : 'correct');
   }, [last]);
+
+  useEffect(() => {
+    if (on && preflopSpot) player.play('deal');
+  }, [preflopSpot]);
+
+  useEffect(() => {
+    if (on && preflopLast) player.play(preflopLast.outcome.grade.verdict === 'wrong' ? 'wrong' : 'correct');
+  }, [preflopLast]);
 
   useEffect(() => {
     if (on && celebration) player.play('rankup');

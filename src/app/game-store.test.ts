@@ -4,6 +4,10 @@ import { mulberry32 } from '../engine/rng';
 import { makeFixture } from '../engine/test-fixtures';
 import { aggressiveAction, evOf, type Action, type Spot } from '../engine/pushfold';
 import type { PushFoldData } from '../engine/pushfold-data';
+import { chartFor, mainActionOf } from '../engine/preflop/charts';
+import { gradePreflop } from '../engine/preflop/grading';
+import { allowedActions, type PreflopAction, type PreflopSpot } from '../engine/preflop/spots';
+import type { PreflopFilter } from '../game/preflop-filter';
 import { dailySpots } from '../game/daily';
 import { RUN_LEVEL_STACKS, startRun } from '../game/endphase-run';
 import { deserialize, emptyState, SaveFormatError, serialize, type SaveState } from '../storage/schema';
@@ -494,5 +498,143 @@ describe('timers while the app is hidden', () => {
     advance(100);
     store.onVisibilityChange(true);
     expect(store.getSnapshot()).toBe(before);
+  });
+});
+
+const preflopRight = (spot: PreflopSpot): PreflopAction => mainActionOf(chartFor(spot), spot.hand);
+const preflopWrong = (spot: PreflopSpot): PreflopAction | undefined =>
+  allowedActions(spot.kind).find((action) => gradePreflop(spot, action).verdict === 'wrong');
+const withFilter = (preflopFilter: PreflopFilter): SaveState => ({ ...emptyState(), profile: { ...emptyState().profile, preflopFilter } });
+
+describe('starthand training', () => {
+  it('deals a spot from the remembered filter and resumes it with a fresh timer', () => {
+    const { store, advance } = setup({}, withFilter({ kind: 'vs3bet', stack: 40 }));
+    store.startPreflop();
+    const first = store.getSnapshot().preflopCurrent!;
+    expect(first.spot).toMatchObject({ kind: 'vs3bet', stack: 40 });
+    expect(handClassOf(first.cards[0], first.cards[1])).toBe(first.spot.hand);
+    expect(first.shownAt).toBe(1000);
+    expect(store.getSnapshot().current).toBeNull();
+    advance(500);
+    store.startPreflop();
+    expect(store.getSnapshot().preflopCurrent).toEqual({ ...first, shownAt: 1500 });
+  });
+
+  it('records an answer with the shared XP, combo and day counter and saves it', () => {
+    const { store, save, advance } = setup({}, { ...emptyState(), profile: { xp: 100, combo: 4, soundOn: true } });
+    store.startPreflop();
+    const spot = store.getSnapshot().preflopCurrent!.spot;
+    advance(1200);
+    const result = store.answerPreflop(preflopRight(spot));
+    expect(result.outcome.grade.verdict).toBe('correct');
+    expect(result.outcome.xp).toEqual({ xp: 23, combo: 5, multiplier: 1.5 });
+    expect(result.outcome.record).toMatchObject({ game: 'preflop', mode: 'training', responseMs: 1200, spot });
+    expect(result.cells).toHaveLength(169);
+    expect(result.note).toBe(chartFor(spot).note);
+    expect(result.comparison.entries.some((e) => e.isCurrent)).toBe(true);
+    expect(save).toHaveBeenCalledWith(result.outcome.state);
+    const s = store.getSnapshot();
+    expect(s.preflopLast).toBe(result);
+    expect(s.save.profile).toMatchObject({ xp: 123, combo: 5 });
+    expect(s.status.dayProgress.count).toBe(1);
+  });
+
+  it('shares the combo and the day counter with push/fold', () => {
+    const { store, data } = setup();
+    store.startTraining();
+    store.answer(rightAction(data, store.getSnapshot().current!.spot));
+    store.startPreflop();
+    const result = store.answerPreflop(preflopRight(store.getSnapshot().preflopCurrent!.spot));
+    expect(result.outcome.xp.combo).toBe(2);
+    expect(store.getSnapshot().save.decisions.map((d) => d.game ?? 'pushfold')).toEqual(['pushfold', 'preflop']);
+    expect(store.getSnapshot().status.dayProgress.count).toBe(2);
+  });
+
+  it('resets the combo on a starthand mistake', () => {
+    const { store } = setup({}, { ...emptyState(), profile: { xp: 0, combo: 7, soundOn: true } });
+    store.startPreflop();
+    while (preflopWrong(store.getSnapshot().preflopCurrent!.spot) === undefined) store.nextPreflopSpot();
+    const result = store.answerPreflop(preflopWrong(store.getSnapshot().preflopCurrent!.spot)!);
+    expect(result.outcome.grade.verdict).toBe('wrong');
+    expect(store.getSnapshot().save.profile.combo).toBe(0);
+  });
+
+  it('refuses double answers and answers without a spot', () => {
+    const { store } = setup();
+    expect(() => store.answerPreflop('fold')).toThrow('Kein Spot aktiv');
+    store.startPreflop();
+    store.answerPreflop('fold');
+    expect(() => store.answerPreflop('fold')).toThrow('Dieser Spot ist bereits beantwortet');
+    store.nextPreflopSpot();
+    expect(store.getSnapshot().preflopLast).toBeNull();
+  });
+
+  it('remembers a new filter in the profile and deals fitting spots', () => {
+    const { store, save } = setup();
+    store.startPreflop();
+    store.setPreflopFilter({ kind: 'rfi', stack: 100 });
+    expect(store.getSnapshot().save.profile.preflopFilter).toEqual({ kind: 'rfi', stack: 100 });
+    expect(save).toHaveBeenLastCalledWith(store.getSnapshot().save);
+    expect(store.getSnapshot().preflopCurrent!.spot).toMatchObject({ kind: 'rfi', stack: 100 });
+    for (let i = 0; i < 20; i++) {
+      store.nextPreflopSpot();
+      expect(store.getSnapshot().preflopCurrent!.spot).toMatchObject({ kind: 'rfi', stack: 100 });
+    }
+  });
+
+  it('keeps the feedback when the filter changes after an answer and ignores an unchanged filter', () => {
+    const { store, save } = setup();
+    store.startPreflop();
+    const result = store.answerPreflop('fold');
+    store.setPreflopFilter({ kind: 'vsOpen', stack: 'all' });
+    expect(store.getSnapshot().preflopLast).toBe(result);
+    const calls = save.mock.calls.length;
+    store.setPreflopFilter({ kind: 'vsOpen', stack: 'all' });
+    expect(save.mock.calls.length).toBe(calls);
+    store.nextPreflopSpot();
+    expect(store.getSnapshot().preflopCurrent!.spot.kind).toBe('vsOpen');
+  });
+
+  it('rejects an invalid filter', () => {
+    const { store } = setup();
+    expect(() => store.setPreflopFilter({ kind: 'squeeze', stack: 'all' } as unknown as PreflopFilter)).toThrow('Ungültiger Starthand-Filter');
+  });
+
+  it('is blocked in read-only mode', () => {
+    const { store } = setup({ readOnly: true });
+    expect(() => store.startPreflop()).toThrow('Im Nur-Lesen-Modus nicht möglich');
+    expect(() => store.nextPreflopSpot()).toThrow('Im Nur-Lesen-Modus nicht möglich');
+    expect(() => store.setPreflopFilter({ kind: 'rfi', stack: 40 })).toThrow('Im Nur-Lesen-Modus nicht möglich');
+    expect(store.getSnapshot().save.profile.preflopFilter).toBeUndefined();
+  });
+
+  it('celebrates a rank-up from a starthand decision', () => {
+    const { store } = setup({}, { ...emptyState(), profile: { xp: 495, combo: 0, soundOn: true } });
+    store.startPreflop();
+    store.answerPreflop(preflopRight(store.getSnapshot().preflopCurrent!.spot));
+    expect(store.getSnapshot().celebration).toBe('Donkey');
+  });
+
+  it('does not count hidden time for the starthand spot', () => {
+    const { store, advance } = setup();
+    store.startPreflop();
+    advance(400);
+    store.onVisibilityChange(false);
+    advance(60_000);
+    store.onVisibilityChange(true);
+    advance(600);
+    expect(store.answerPreflop('fold').outcome.record.responseMs).toBe(1000);
+  });
+
+  it('clears the starthand round when another state is adopted or imported', async () => {
+    const { store } = setup();
+    store.startPreflop();
+    store.adoptSavedState(emptyState());
+    expect(store.getSnapshot().preflopCurrent).toBeNull();
+    store.startPreflop();
+    store.answerPreflop('fold');
+    await store.importState(serialize(emptyState()));
+    expect(store.getSnapshot().preflopCurrent).toBeNull();
+    expect(store.getSnapshot().preflopLast).toBeNull();
   });
 });

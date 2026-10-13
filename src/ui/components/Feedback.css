@@ -71,6 +71,26 @@
   color: var(--cell-fold-fg);
 }
 
+.cell--call {
+  background: var(--cell-call-bg);
+  color: var(--cell-call-fg);
+}
+
+.cell--borderline {
+  background: var(--cell-borderline-bg);
+  color: var(--cell-borderline-fg);
+}
+
+.feedback__note {
+  margin: 8px 0 0;
+  font-style: italic;
+}
+
+.feedback__hint {
+  margin: 0;
+  font-size: 12px;
+}
+
 .range-chart {
   margin: 0;
 }

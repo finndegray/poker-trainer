@@ -18,6 +18,10 @@
   --cell-close-fold-fg: #ffffff;
   --cell-fold-bg: #1d2b24;
   --cell-fold-fg: #a9bcb1;
+  --cell-call-bg: #2f6f9f;
+  --cell-call-fg: #ffffff;
+  --cell-borderline-bg: #d9a441;
+  --cell-borderline-fg: #3a2a05;
   --heat-low: #24493a;
   --heat-high: #c0392b;
   --heat-fg: #ffffff;

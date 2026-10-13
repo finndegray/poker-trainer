@@ -1,12 +1,17 @@
-import { type MouseEvent, useEffect, useRef } from 'react';
+import { type MouseEvent, useEffect, useMemo, useRef } from 'react';
+import { preflopChoiceLabel } from '../../app/format';
+import { type PreflopAction, type PreflopSpot, aggressiveActionOf, allowedActions } from '../../engine/preflop/spots';
 import type { Action } from '../../engine/pushfold';
 import type { SpotKind } from '../../engine/spot-generator';
 import './ActionBar.css';
 
-type Props = {
-  kind: SpotKind;
+/** One answer button: `keys` are lower-case keyboard shortcuts, the first one is shown on the button. */
+export type Choice<A extends string> = { action: A; label: string; keys: readonly string[]; primary?: boolean };
+
+type ChoiceBarProps<A extends string> = {
+  choices: readonly Choice<A>[];
   answered: boolean;
-  onAction: (action: Action) => void;
+  onAction: (action: A) => void;
   onNext: () => void;
   disabled?: boolean;
 };
@@ -21,8 +26,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
-export function ActionBar({ kind, answered, onAction, onNext, disabled = false }: Props) {
-  const aggressive: Action = kind === 'open' ? 'shove' : 'call';
+export function ChoiceBar<A extends string>({ choices, answered, onAction, onNext, disabled = false }: ChoiceBarProps<A>) {
   const nextButton = useRef<HTMLButtonElement>(null);
   const nextArmed = useRef(false);
 
@@ -47,13 +51,12 @@ export function ActionBar({ kind, answered, onAction, onNext, disabled = false }
       if (disabled || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
       if (isTypingTarget(event.target)) return;
       const key = event.key.toLowerCase();
-      if (!answered && key === 'f') {
+      if (!answered) {
+        const choice = choices.find((c) => c.keys.includes(key));
+        if (!choice) return;
         event.preventDefault();
-        onAction('fold');
-      } else if (!answered && key === 'a') {
-        event.preventDefault();
-        onAction(aggressive);
-      } else if (answered && (key === ' ' || key === 'enter')) {
+        onAction(choice.action);
+      } else if (key === ' ' || key === 'enter') {
         // A focused button already turns space/enter into a click.
         if (event.target instanceof HTMLButtonElement) return;
         event.preventDefault();
@@ -62,7 +65,7 @@ export function ActionBar({ kind, answered, onAction, onNext, disabled = false }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [answered, aggressive, disabled, onAction, onNext]);
+  }, [answered, choices, disabled, onAction, onNext]);
 
   if (answered) {
     return (
@@ -80,19 +83,60 @@ export function ActionBar({ kind, answered, onAction, onNext, disabled = false }
     );
   }
   return (
-    <div className="action-bar">
-      <button type="button" className="btn" onClick={() => onAction('fold')} disabled={disabled} aria-keyshortcuts="F">
-        Fold <kbd aria-hidden="true">F</kbd>
-      </button>
-      <button
-        type="button"
-        className="btn btn--gold"
-        onClick={() => onAction(aggressive)}
-        disabled={disabled}
-        aria-keyshortcuts="A"
-      >
-        {kind === 'open' ? 'All-in' : 'Call'} <kbd aria-hidden="true">A</kbd>
-      </button>
+    <div className={`action-bar${choices.length === 3 ? ' action-bar--three' : ''}`}>
+      {choices.map((choice) => (
+        <button
+          key={choice.action}
+          type="button"
+          className={`btn${choice.primary ? ' btn--gold' : ''}`}
+          onClick={() => onAction(choice.action)}
+          disabled={disabled}
+          aria-keyshortcuts={choice.keys.map((k) => k.toUpperCase()).join(' ')}
+        >
+          {choice.label} <kbd aria-hidden="true">{choice.keys[0].toUpperCase()}</kbd>
+        </button>
+      ))}
     </div>
   );
+}
+
+type ActionBarProps = {
+  kind: SpotKind;
+  answered: boolean;
+  onAction: (action: Action) => void;
+  onNext: () => void;
+  disabled?: boolean;
+};
+
+export function ActionBar({ kind, answered, onAction, onNext, disabled = false }: ActionBarProps) {
+  const choices = useMemo<Choice<Action>[]>(
+    () => [
+      { action: 'fold', label: 'Fold', keys: ['f'] },
+      { action: kind === 'open' ? 'shove' : 'call', label: kind === 'open' ? 'All-in' : 'Call', keys: ['a'], primary: true },
+    ],
+    [kind],
+  );
+  return <ChoiceBar choices={choices} answered={answered} onAction={onAction} onNext={onNext} disabled={disabled} />;
+}
+
+/** Fold, Call (not when everybody folded) and the aggressive action with its size. F, C, R or A. */
+export function preflopChoices(spot: PreflopSpot): Choice<PreflopAction>[] {
+  const aggressive = aggressiveActionOf(spot.kind);
+  const choices: Choice<PreflopAction>[] = [{ action: 'fold', label: 'Fold', keys: ['f'] }];
+  if (allowedActions(spot.kind).includes('call')) choices.push({ action: 'call', label: 'Call', keys: ['c'] });
+  choices.push({ action: aggressive, label: preflopChoiceLabel(aggressive, spot), keys: ['r', 'a'], primary: true });
+  return choices;
+}
+
+type PreflopActionBarProps = {
+  spot: PreflopSpot;
+  answered: boolean;
+  onAction: (action: PreflopAction) => void;
+  onNext: () => void;
+  disabled?: boolean;
+};
+
+export function PreflopActionBar({ spot, answered, onAction, onNext, disabled = false }: PreflopActionBarProps) {
+  const choices = useMemo(() => preflopChoices(spot), [spot]);
+  return <ChoiceBar choices={choices} answered={answered} onAction={onAction} onNext={onNext} disabled={disabled} />;
 }

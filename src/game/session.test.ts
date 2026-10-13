@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { parseHand } from '../engine/cards';
+import { generatePreflopSpot } from '../engine/preflop/generator';
+import type { PreflopSpot } from '../engine/preflop/spots';
 import type { Spot } from '../engine/pushfold';
 import { makeFixture } from '../engine/test-fixtures';
 import { mulberry32 } from '../engine/rng';
 import { generateSpot } from '../engine/spot-generator';
 import { MAX_DECISIONS, MAX_RUNS, emptyState, type RunSummary, type SaveState } from '../storage/schema';
+import { deserialize, serialize } from '../storage/schema';
 import { loadState, memoryBackend, saveState } from '../storage/store';
+import type { PreflopFilter } from './preflop-filter';
 import { applyRunAnswer, startRun, type RunState } from './endphase-run';
 import {
-  answerActiveRun, nextTrainingSpot, recordDaily, recordDecision, recordRun, setSound, startActiveRun, statusOf,
+  answerActiveRun, nextPreflopTrainingSpot, nextTrainingSpot, recordDaily, recordDecision, recordPreflopDecision, recordRun, setSound, startActiveRun, statusOf,
 } from './session';
-import { adaptiveWeights } from './stats';
+import { adaptiveWeights, preflopAdaptiveWeights } from './stats';
 
 const data = makeFixture((h) => (84 - h) / 10);
 const now = new Date(2026, 9, 13, 20, 0);
@@ -211,5 +215,86 @@ describe('nextTrainingSpot', () => {
     expect(a).toEqual(generateSpot(data, mulberry32(42), { categoryWeights: adaptiveWeights(state.decisions) }));
     const rng = mulberry32(7);
     for (let i = 0; i < 30; i++) expect(nextTrainingSpot(data, state, rng, { kinds: ['call'] }).kind).toBe('call');
+  });
+});
+
+describe('recordPreflopDecision', () => {
+  const aaUtg: PreflopSpot = { kind: 'rfi', stack: 100, hero: 'UTG', villain: null, hand: parseHand('AA') };
+  const fours: PreflopSpot = { ...aaUtg, hand: parseHand('44') };
+  const trash: PreflopSpot = { ...aaUtg, hand: parseHand('72o') };
+
+  it('grades the decision and shares XP, combo, day counter and history with push/fold', () => {
+    const before: SaveState = { ...emptyState(), profile: { xp: 100, combo: 4, soundOn: true }, days: { '2026-10-13': 3 } };
+    const out = recordPreflopDecision(before, { spot: aaUtg, chosen: 'raise', responseMs: 1200, now });
+    expect(out.grade).toEqual({ verdict: 'correct', chosen: 'raise', best: 'raise', alternative: null });
+    expect(out.xp).toEqual({ xp: 23, combo: 5, multiplier: 1.5 });
+    expect(out.state.profile).toEqual({ xp: 123, combo: 5, soundOn: true });
+    expect(out.state.days).toEqual({ '2026-10-13': 4 });
+    expect(out.record).toEqual({
+      ts: now.getTime(), dateKey: '2026-10-13', mode: 'training', game: 'preflop',
+      spot: aaUtg, chosen: 'raise', verdict: 'correct', responseMs: 1200,
+    });
+    expect(out.state.decisions).toEqual([out.record]);
+    expect(out.rank).toEqual({ before: 'Fish', after: 'Fish', rankUp: false });
+    expect(before.decisions).toEqual([]);
+  });
+
+  it('counts a borderline alternative as right and resets the combo on a mistake', () => {
+    const close = recordPreflopDecision(emptyState(), { spot: fours, chosen: 'fold', responseMs: 6000, now });
+    expect(close.grade.verdict).toBe('close');
+    expect(close.xp).toEqual({ xp: 10, combo: 1, multiplier: 1 });
+    const wrong = recordPreflopDecision(close.state, { spot: trash, chosen: 'raise', responseMs: 1000, now });
+    expect(wrong.grade.verdict).toBe('wrong');
+    expect(wrong.state.profile).toMatchObject({ xp: 10, combo: 0 });
+    expect(wrong.state.days).toEqual({ '2026-10-13': 2 });
+  });
+
+  it('continues the combo of a push/fold decision and reports a rank-up', () => {
+    const start: SaveState = { ...emptyState(), profile: { xp: 480, combo: 0, soundOn: true } };
+    const pf = recordDecision(data, start, { spot: aaOnBtn, chosen: 'shove', responseMs: 1000, mode: 'training', now });
+    const out = recordPreflopDecision(pf.state, { spot: aaUtg, chosen: 'raise', responseMs: 1000, now });
+    expect(out.xp.combo).toBe(2);
+    expect(out.rank).toEqual({ before: 'Fish', after: 'Donkey', rankUp: true });
+    expect(statusOf(out.state, now).dayProgress.count).toBe(2);
+    expect(out.state.decisions.map((d) => d.game ?? 'pushfold')).toEqual(['pushfold', 'preflop']);
+  });
+
+  it('stores only the spot fields and survives the save format', () => {
+    const out = recordPreflopDecision(emptyState(), { spot: { ...aaUtg, extra: 1 } as PreflopSpot, chosen: 'raise', responseMs: 1000, now });
+    expect(out.record.spot).toEqual(aaUtg);
+    expect(deserialize(serialize(out.state))).toEqual(out.state);
+  });
+
+  it('rejects actions that do not fit and invalid dates', () => {
+    expect(() => recordPreflopDecision(emptyState(), { spot: aaUtg, chosen: 'call', responseMs: 1000, now }))
+      .toThrow('Aktion call passt nicht zum Spot');
+    expect(() => recordPreflopDecision(emptyState(), { spot: aaUtg, chosen: 'raise', responseMs: 1000, now: new Date(Number.NaN) }))
+      .toThrow('Ungültiges Datum');
+  });
+});
+
+describe('nextPreflopTrainingSpot', () => {
+  const withFilter = (preflopFilter: PreflopFilter): SaveState => ({ ...emptyState(), profile: { ...emptyState().profile, preflopFilter } });
+
+  it('follows the filter remembered in the profile', () => {
+    const rng = mulberry32(7);
+    for (let i = 0; i < 40; i++) {
+      expect(nextPreflopTrainingSpot(withFilter({ kind: 'vs3bet', stack: 40 }), rng)).toMatchObject({ kind: 'vs3bet', stack: 40 });
+    }
+  });
+
+  it('mixes all spot types and both stacks without a filter', () => {
+    const rng = mulberry32(3);
+    const spots = Array.from({ length: 300 }, () => nextPreflopTrainingSpot(emptyState(), rng));
+    expect(new Set(spots.map((s) => s.kind))).toEqual(new Set(['rfi', 'vsOpen', 'vs3bet']));
+    expect(new Set(spots.map((s) => s.stack))).toEqual(new Set([40, 100]));
+  });
+
+  it('weights the categories by starthand mistakes', () => {
+    const trash: PreflopSpot = { kind: 'rfi', stack: 100, hero: 'UTG', villain: null, hand: parseHand('72o') };
+    let state = emptyState();
+    for (let i = 0; i < 3; i++) state = recordPreflopDecision(state, { spot: trash, chosen: 'raise', responseMs: 1000, now }).state;
+    expect(nextPreflopTrainingSpot(state, mulberry32(42)))
+      .toEqual(generatePreflopSpot(mulberry32(42), { categoryWeights: preflopAdaptiveWeights(state.decisions) }));
   });
 });

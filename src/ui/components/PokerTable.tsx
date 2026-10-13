@@ -1,16 +1,16 @@
 import type { CSSProperties } from 'react';
+import { formatBb, preflopSituationText } from '../../app/format';
 import { type Card, rankOf } from '../../engine/cards';
 import { POSITION_LABELS } from '../../engine/positions';
+import type { PreflopSpot } from '../../engine/preflop/spots';
 import type { Spot } from '../../engine/pushfold';
-import { tableModel } from '../table-model';
+import { type TableModel, preflopTableModel, tableModel } from '../table-model';
 import { PlayingCard } from './PlayingCard';
 import './PokerTable.css';
 
-const bb = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
-
 function seatStyle(offset: number): CSSProperties {
   const angle = ((90 + offset * 45) * Math.PI) / 180;
-  return { left: `${50 + 44 * Math.cos(angle)}%`, top: `${50 + 41 * Math.sin(angle)}%` };
+  return { left: `${50 + 40 * Math.cos(angle)}%`, top: `${50 + 41 * Math.sin(angle)}%` };
 }
 
 function behindText(n: number): string {
@@ -19,16 +19,16 @@ function behindText(n: number): string {
   return `noch ${n} Spieler hinter dir`;
 }
 
-export function PokerTable({ spot, cards }: { spot: Spot; cards: readonly [Card, Card] }) {
-  const model = tableModel(spot);
+type ViewProps = { model: TableModel; cards: readonly [Card, Card]; situation: string; info: string };
+
+function TableView({ model, cards, situation, info }: ViewProps) {
   // High card first, the way players read their hand.
   const shown = [...cards].sort((a, b) => rankOf(b) - rankOf(a));
-  const situation = spot.kind === 'open' ? 'Alle folden zu dir' : `${POSITION_LABELS[spot.shover]} geht All-in`;
   return (
     <section className="poker-table" aria-label="Pokertisch">
       <div className="poker-table__stage">
         <div className="poker-table__felt">
-          <div className="poker-table__pot">Pot {bb.format(model.potBb)} BB</div>
+          <div className="poker-table__pot">Pot {formatBb(model.potBb)} BB</div>
           <div className="poker-table__situation">{situation}</div>
           <div className="poker-table__cards">
             {shown.map((card, i) => (
@@ -44,9 +44,15 @@ export function PokerTable({ spot, cards }: { spot: Spot; cards: readonly [Card,
             data-testid={`seat-${seat.position}`}
           >
             <span className="seat__label">{seat.label}</span>
-            {seat.role === 'shover' && <span className="seat__allin">All-in {bb.format(seat.betBb)} BB</span>}
-            {seat.role !== 'shover' && seat.betBb > 0 && <span className="seat__bet">{bb.format(seat.betBb)} BB</span>}
-            {seat.anteBb > 0 && <span className="seat__ante">Ante {bb.format(seat.anteBb)}</span>}
+            {seat.betLabel !== null ? (
+              <span className="seat__allin">
+                {seat.betLabel} {formatBb(seat.betBb)} BB
+              </span>
+            ) : (
+              seat.betBb > 0 && <span className="seat__bet">{formatBb(seat.betBb)} BB</span>
+            )}
+            {seat.stackBb !== null && <span className="seat__stack">Stack {formatBb(seat.stackBb)}</span>}
+            {seat.anteBb > 0 && <span className="seat__ante">Ante {formatBb(seat.anteBb)}</span>}
             {seat.isButton && (
               <span className="seat__button" aria-label="Dealer-Button">
                 D
@@ -55,9 +61,22 @@ export function PokerTable({ spot, cards }: { spot: Spot; cards: readonly [Card,
           </div>
         ))}
       </div>
-      <p className="poker-table__info">
-        Du sitzt im {POSITION_LABELS[spot.position]} · {spot.stack} BB · {behindText(model.playersBehind)}
-      </p>
+      <p className="poker-table__info">{info}</p>
     </section>
   );
+}
+
+export function PokerTable({ spot, cards }: { spot: Spot; cards: readonly [Card, Card] }) {
+  const model = tableModel(spot);
+  const situation = spot.kind === 'open' ? 'Alle folden zu dir' : `${POSITION_LABELS[spot.shover]} geht All-in`;
+  const info = `Du sitzt im ${POSITION_LABELS[spot.position]} · ${spot.stack} BB · ${behindText(model.playersBehind)}`;
+  return <TableView model={model} cards={cards} situation={situation} info={info} />;
+}
+
+export function PreflopTable({ spot, cards }: { spot: PreflopSpot; cards: readonly [Card, Card] }) {
+  const model = preflopTableModel(spot);
+  const info = [`Du sitzt im ${POSITION_LABELS[spot.hero]}`, `${spot.stack} BB effektiv`];
+  // Facing a 3-bet nobody else is left; "du handelst als Letzter" would be wrong, the 3-bettor may still act.
+  if (spot.kind !== 'vs3bet') info.push(behindText(model.playersBehind));
+  return <TableView model={model} cards={cards} situation={preflopSituationText(spot)} info={info.join(' · ')} />;
 }

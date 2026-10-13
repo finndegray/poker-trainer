@@ -13,6 +13,16 @@
   grid-column: 1 / -1;
 }
 
+.action-bar--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.action-bar--three .btn {
+  font-size: 15px;
+  line-height: 1.2;
+  padding: 4px 8px;
+}
+
 .action-bar kbd {
   font: inherit;
   font-size: 11px;

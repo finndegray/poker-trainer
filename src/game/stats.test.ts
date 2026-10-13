@@ -1,18 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { parseHand } from '../engine/cards';
+import type { PreflopSpot } from '../engine/preflop/spots';
 import type { Spot, Verdict } from '../engine/pushfold';
 import {
-  accuracy, accuracyBy, adaptiveWeights, byKind, byPosition, byStackBucket, handErrorMatrix, weeklyTrend,
-  type DecisionRecord,
+  accuracy, accuracyBy, adaptiveWeights, byKind, byPosition, byPreflopHero, byPreflopKind, byPreflopStack, byStackBucket, handErrorMatrix, isPreflopRecord,
+  preflopAdaptiveWeights, preflopHandErrorMatrix, preflopRecords, pushFoldRecords, weeklyTrend, type PreflopRecord, type PushFoldRecord,
 } from './stats';
 
 let ts = 0;
-function rec(spot: Spot, verdict: Verdict, dateKey = '2026-10-13'): DecisionRecord {
+function rec(spot: Spot, verdict: Verdict, dateKey = '2026-10-13'): PushFoldRecord {
   ts += 1;
   return { ts, dateKey, mode: 'training', spot, chosen: 'fold', verdict, responseMs: 3000 };
 }
 const btn = (stack: number, hand = 'A7o'): Spot => ({ kind: 'open', position: 'BTN', stack, hand: parseHand(hand) });
 const bbCall = (stack: number, hand = 'K9o'): Spot => ({ kind: 'call', shover: 'SB', position: 'BB', stack, hand: parseHand(hand) });
+const rfiCo = (hand = 'A9o'): PreflopSpot => ({ kind: 'rfi', stack: 100, hero: 'CO', villain: null, hand: parseHand(hand) });
+function preRec(spot: PreflopSpot, verdict: Verdict): PreflopRecord {
+  ts += 1;
+  return { ts, dateKey: '2026-10-13', mode: 'training', game: 'preflop', spot, chosen: 'fold', verdict, responseMs: 2000 };
+}
 
 describe('accuracy', () => {
   it('counts close decisions as correct', () => {
@@ -77,5 +83,59 @@ describe('adaptiveWeights', () => {
     const recent = Array.from({ length: 50 }, () => rec(btn(3), 'correct'));
     expect(adaptiveWeights([...old, ...recent]).get('open|BTN|1-5')).toBe(1);
     expect(adaptiveWeights([...recent.slice(0, 25), ...old.slice(0, 25)]).get('open|BTN|1-5')).toBeCloseTo(3);
+  });
+});
+
+describe('push/fold and starthand records', () => {
+  it('separates the records by game, missing game meaning push/fold', () => {
+    const pf = rec(btn(10), 'correct');
+    const explicit: PushFoldRecord = { ...rec(btn(8), 'wrong'), game: 'pushfold' };
+    const pre = preRec(rfiCo(), 'wrong');
+    expect(pushFoldRecords([pf, pre, explicit])).toEqual([pf, explicit]);
+    expect(preflopRecords([pf, pre, explicit])).toEqual([pre]);
+    expect(isPreflopRecord(pre)).toBe(true);
+    expect(isPreflopRecord(explicit)).toBe(false);
+  });
+
+  it('keeps starthand records out of the push/fold heatmap and weights', () => {
+    const pre = preRec(rfiCo('A7o'), 'wrong');
+    const m = handErrorMatrix([pre, rec(btn(10, 'A7o'), 'correct')], 'open');
+    expect(m.total[parseHand('A7o')]).toBe(1);
+    expect(m.errors[parseHand('A7o')]).toBe(0);
+    expect([...adaptiveWeights([pre]).keys()]).toEqual([]);
+    expect([...adaptiveWeights([pre, rec(btn(3), 'wrong')]).keys()]).toEqual(['open|BTN|1-5']);
+  });
+});
+
+describe('preflopAdaptiveWeights', () => {
+  it('weights starthand categories by their own errors and ignores push/fold', () => {
+    const w = preflopAdaptiveWeights([preRec(rfiCo(), 'wrong'), preRec(rfiCo(), 'correct'), rec(btn(10), 'wrong')]);
+    expect([...w.entries()]).toEqual([['rfi|CO|100', 3]]);
+  });
+});
+
+describe('starthand statistics', () => {
+  const records = () => [
+    preRec(rfiCo('A9o'), 'wrong'),
+    preRec(rfiCo('A9o'), 'correct'),
+    preRec({ kind: 'vsOpen', stack: 40, hero: 'BB', villain: 'UTG', hand: parseHand('KJo') }, 'close'),
+    preRec({ kind: 'vs3bet', stack: 100, hero: 'CO', villain: 'BTN', hand: parseHand('AQo') }, 'wrong'),
+  ];
+
+  it('groups by spot type, hero position and stack', () => {
+    expect(accuracyBy(records(), byPreflopKind).get('rfi')).toEqual({ correct: 1, total: 2, rate: 0.5 });
+    expect(accuracyBy(records(), byPreflopKind).get('vsOpen')).toEqual({ correct: 1, total: 1, rate: 1 });
+    expect(accuracyBy(records(), byPreflopHero).get('CO')?.total).toBe(3);
+    expect(accuracyBy(records(), byPreflopStack).get('40 BB')).toEqual({ correct: 1, total: 1, rate: 1 });
+    expect(accuracyBy(records(), byPreflopStack).get('100 BB')?.total).toBe(3);
+  });
+
+  it('counts errors per hand for one starthand spot type and skips push/fold records', () => {
+    const m = preflopHandErrorMatrix([...records(), rec(btn(10, 'A9o'), 'wrong')], 'rfi');
+    expect(m.total).toHaveLength(169);
+    expect(m.total[parseHand('A9o')]).toBe(2);
+    expect(m.errors[parseHand('A9o')]).toBe(1);
+    expect(m.total[parseHand('AQo')]).toBe(0);
+    expect(preflopHandErrorMatrix(records(), 'vs3bet').errors[parseHand('AQo')]).toBe(1);
   });
 });

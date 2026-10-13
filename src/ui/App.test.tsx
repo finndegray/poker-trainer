@@ -57,6 +57,29 @@ describe('App', () => {
     expect(screen.getByLabelText('Pokertisch')).toBeTruthy();
   });
 
+  it('plays a starthand round from the home tile', () => {
+    const { save, store } = renderWithStore(<App />);
+    expect(screen.getByRole('heading', { name: 'Starthand-Training' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Starthände trainieren' }));
+    expect(screen.getByLabelText('Pokertisch')).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Spot-Typ' })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'f' });
+    expect(screen.getByRole('heading', { name: verdict })).toBeTruthy();
+    expect(screen.getByText('Standard-Chart, kein Solver-Ergebnis')).toBeTruthy();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().save.decisions[0].game).toBe('preflop');
+    fireEvent.keyDown(window, { key: ' ' });
+    expect(screen.queryByRole('heading', { name: verdict })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '← Menü' }));
+    expect(screen.getByRole('button', { name: 'Starthände trainieren' })).toBeTruthy();
+    expect(screen.getByText('Heute 1/20')).toBeTruthy();
+  });
+
+  it('locks the starthand tile in read-only mode', () => {
+    renderWithStore(<App />, { info: { readOnly: true } });
+    expect((screen.getByRole('button', { name: 'Starthände trainieren' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('shows the best placement with a thousands separator', () => {
     const best = { ts: 5, dateKey: '2026-10-12', placement: 1240, finalTable: false, levelsCompleted: 3, bonusXp: 30 };
     renderWithStore(<App />, { initial: { ...emptyState(), runs: [best], bestRun: best } });

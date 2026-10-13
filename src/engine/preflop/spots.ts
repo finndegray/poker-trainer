@@ -100,6 +100,7 @@ const openSize = (opener: Position) => (opener === 'SB' ? SB_OPEN_RAISE : OPEN_R
 const threeBetSize = (open: number, threeBettor: Position) =>
   round1(open * (isBlind(threeBettor) ? THREE_BET_BLINDS : THREE_BET_IP));
 
+// All amounts in BB. facing/aggressiveTo are totals ("raise to"); stackBehind = stack - heroPosted (rounded to 0.1 against float noise).
 export type PreflopBets = {
   heroPosted: number;
   villainPosted: number | null;

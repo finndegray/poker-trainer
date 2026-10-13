@@ -1,4 +1,4 @@
-import { PREFLOP_KINDS, type PreflopKind, STACK_DEPTHS, type StackDepth } from '../engine/preflop/spots';
+import { PREFLOP_KINDS, type PreflopKind, type PreflopSituation, STACK_DEPTHS, type StackDepth } from '../engine/preflop/spots';
 
 /** The starthand filter remembered in the profile; 'all' means no restriction. */
 export type PreflopFilter = { kind: PreflopKind | 'all'; stack: StackDepth | 'all' };
@@ -25,3 +25,7 @@ export function preflopSpotOptions(filter: PreflopFilter): PreflopSpotOptions {
     ...(filter.stack === 'all' ? {} : { stacks: [filter.stack] }),
   };
 }
+
+/** Does a spot fit the filter (e.g. a queued spot from the hand review)? */
+export const matchesPreflopFilter = (spot: PreflopSituation, filter: PreflopFilter): boolean =>
+  (filter.kind === 'all' || filter.kind === spot.kind) && (filter.stack === 'all' || filter.stack === spot.stack);

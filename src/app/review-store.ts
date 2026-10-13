@@ -55,7 +55,8 @@ export type RetrainingSink = {
   /** Tournaments whose hands were fed in already. */
   synced(): ReadonlySet<string>;
   /** Replaces the queued spots of one tournament with its current errors. */
-  sync(tournamentId: string, candidates: readonly RetrainingCandidate[]): void;
+  /** `markSynced`: the one-time read of an archive; the tournament counts as read even without any spot. */
+  sync(tournamentId: string, candidates: readonly RetrainingCandidate[], markSynced?: boolean): void;
   forget(tournamentId: string): void;
 };
 export type ReviewStoreDeps = {
@@ -70,6 +71,8 @@ export type ReviewStoreDeps = {
   pause?: () => Promise<void>;
   /** The retraining queue; without it (tests, tools) nothing is fed. */
   retraining?: RetrainingSink;
+  /** Failures of the queue (it never fails an archive write, but they must not vanish); main.tsx passes the logger. */
+  onError?: (error: unknown) => void;
 };
 export type ReviewStore = {
   /** The push/fold data the ratings use (charts and comparisons in the hand view). */
@@ -112,11 +115,11 @@ const byNewest = (a: TournamentRecord, b: TournamentRecord) => b.lastPlayedAt.lo
 /** The game store as the sink of the retraining queue. */
 export const retrainingSinkOf = (game: {
   retrainingSynced(): ReadonlySet<string>;
-  syncRetraining(tournamentId: string, candidates: readonly RetrainingCandidate[]): void;
+  syncRetraining(tournamentId: string, candidates: readonly RetrainingCandidate[], markSynced?: boolean): void;
   forgetRetraining(tournamentId: string): void;
 }): RetrainingSink => ({
   synced: () => game.retrainingSynced(),
-  sync: (id, candidates) => game.syncRetraining(id, candidates),
+  sync: (id, candidates, markSynced) => game.syncRetraining(id, candidates, markSynced),
   forget: (id) => game.forgetRetraining(id),
 });
 
@@ -198,14 +201,15 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
   const isCurrent = (t: TournamentRecord) => (t.analysisVersion ?? 1) === ANALYSIS_VERSION;
 
   /** After every archive write of a tournament: its current preflop errors replace its part of the queue. */
-  const feed = (tournament: TournamentRecord, hands: readonly HandRecord[]) => {
+  const feed = (tournament: TournamentRecord, hands: readonly HandRecord[], markSynced?: boolean) => {
     const sink = deps.retraining;
     if (!sink) return;
     const rated = hands.filter((h) => h.analysisVersion === ANALYSIS_VERSION && isHandAnalysis(h.analysis));
     try {
-      sink.sync(tournament.id, retrainingCandidates(tournament.kind, rated));
-    } catch {
+      sink.sync(tournament.id, retrainingCandidates(tournament.kind, rated), markSynced);
+    } catch (error) {
       // The queue is only a copy of the archived errors: it must never fail an archive write that already happened.
+      deps.onError?.(error);
     }
   };
   let refreshing: Promise<void> | null = null;
@@ -400,8 +404,9 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
       update({ tournaments: snapshot.tournaments.filter((t) => t.id !== id) });
       try {
         deps.retraining?.forget(id);
-      } catch {
+      } catch (error) {
         // As in feed: the archive change stands.
+        deps.onError?.(error);
       }
     },
     async exportPart() {
@@ -440,7 +445,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
           const { hands } = await loadHands(backend, tournament.handIds);
           update({});
           if (!snapshot.writable) return true;
-          feed(tournament, hands);
+          feed(tournament, hands, true);
           return false;
         });
         if (stop) break;

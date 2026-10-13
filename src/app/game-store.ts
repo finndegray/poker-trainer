@@ -129,7 +129,7 @@ export type GameStore = {
   /** Remembers the filter in the profile; an unanswered spot is replaced by one that fits. */
   setPreflopFilter(filter: PreflopFilter): void;
   /** Replaces the queued spots of one tournament with its current preflop errors (spec 10); ignored in read-only mode. */
-  syncRetraining(tournamentId: string, candidates: readonly RetrainingCandidate[]): void;
+  syncRetraining(tournamentId: string, candidates: readonly RetrainingCandidate[], markSynced?: boolean): void;
   /** Removes the queued spots of a deleted tournament. */
   forgetRetraining(tournamentId: string): void;
   /** Tournaments whose hands were fed into the queue already. */
@@ -455,9 +455,9 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
       // An unanswered spot may not fit the new filter; an answered one keeps its feedback.
       if (snapshot.preflopCurrent && !snapshot.preflopLast) store.nextPreflopSpot();
     },
-    syncRetraining(tournamentId, candidates) {
+    syncRetraining(tournamentId, candidates, markSynced) {
       if (snapshot.info.readOnly) return;
-      const next = syncRetraining(snapshot.save, tournamentId, candidates);
+      const next = syncRetraining(snapshot.save, tournamentId, candidates, markSynced);
       if (next !== snapshot.save) commit(next);
     },
     forgetRetraining(tournamentId) {

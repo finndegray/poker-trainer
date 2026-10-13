@@ -31,6 +31,10 @@ describe('syncRetraining', () => {
   it('leaves a save without queue untouched when there is nothing to queue', () => {
     const state = emptyState();
     expect(syncRetraining(state, '318096259', [])).toBe(state);
+    // The one-time sync of old archives marks a tournament as read even when nothing maps to a spot.
+    const marked = syncRetraining(state, '318096259', [], true);
+    expect(marked.retraining).toMatchObject({ entries: [], synced: ['318096259'] });
+    expect(syncRetraining(marked, '318096259', [], true)).toBe(marked);
     expect(forgetRetraining(state, '318096259')).toBe(state);
   });
 

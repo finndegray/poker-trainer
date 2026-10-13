@@ -99,6 +99,12 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
         done = `Spielstand importiert. Hand-Archiv nicht übernommen: ${errorText(error)}`;
       }
     }
+    // The imported save has no (or an old) queue: the same one-time comparison as at start feeds it from the archive.
+    try {
+      await reviewStore.syncRetraining();
+    } catch (error) {
+      console.error(error);
+    }
     setMessage(done);
     // The import itself succeeded; a failing list must not be reported as a failed import.
     try {

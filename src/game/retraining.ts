@@ -88,10 +88,16 @@ function withEntries(state: SaveState, base: RetrainingState, entries: Retrainin
 /**
  * Replaces the queued spots of one tournament with `candidates` (all its current preflop errors; empty for satellites
  * and bounty tournaments). A spot that stays keeps its streak; spots in `done` never come back. Without any queue and
- * without candidates the save stays exactly as it is.
+ * without candidates the save stays exactly as it is, unless `markSynced` is set (the one-time read of an archive:
+ * a tournament whose errors all map to nothing is still marked as read).
  */
-export function syncRetraining(state: SaveState, tournamentId: string, candidates: readonly RetrainingCandidate[]): SaveState {
-  if (state.retraining === undefined && candidates.length === 0) return state;
+export function syncRetraining(
+  state: SaveState,
+  tournamentId: string,
+  candidates: readonly RetrainingCandidate[],
+  markSynced = false,
+): SaveState {
+  if (state.retraining === undefined && candidates.length === 0 && !markSynced) return state;
   const base = retrainingOf(state);
   const done = new Set(base.done);
   const others = base.entries.filter((e) => e.tournamentId !== tournamentId);

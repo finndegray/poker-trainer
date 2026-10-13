@@ -82,6 +82,7 @@ async function bootstrap(): Promise<void> {
     analyzer,
     // Preflop errors of normal tournaments go into the retraining queue of the save (spec 10).
     retraining: retrainingSinkOf(ready),
+    onError: logError,
   });
   // Archived hands from an older analysis version are rated again in the background (writing tab only), then
   // tournaments never fed into the retraining queue are fed (archives from before Plan 9).

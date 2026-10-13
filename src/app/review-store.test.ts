@@ -1,5 +1,5 @@
 import { strToU8, zipSync } from 'fflate';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getPushFoldData } from './data';
 import { ANALYSIS_VERSION } from '../review/analysis';
 import { type HandAnalyzer, createInlineAnalyzer } from '../review/analyzer';
@@ -512,5 +512,62 @@ describe('retraining queue (spec 10)', () => {
     expect(readTournament(backend.dump()[tournamentKey('318096259')]).handIds).toHaveLength(6);
     await store.deleteTournament('318096259');
     expect(backend.dump()).toEqual({});
+  });
+
+  it('reports queue failures through onError without failing the archive write', async () => {
+    const failure = new Error('voll');
+    const sink: RetrainingSink = {
+      synced: () => new Set(),
+      sync: () => {
+        throw failure;
+      },
+      forget: () => {
+        throw failure;
+      },
+    };
+    const onError = vi.fn();
+    const { store, backend } = await setup({ retraining: sink, onError });
+    await store.importText(dailyClassic);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenLastCalledWith(failure);
+    expect(readTournament(backend.dump()[tournamentKey('318096259')]).handIds).toHaveLength(6);
+    await store.deleteTournament('318096259');
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(backend.dump()).toEqual({});
+  });
+
+  it('reports queue failures of the one-time sync through onError', async () => {
+    const backend = memoryReviewBackend();
+    const first = await setup({ backend });
+    await first.store.importText(dailyClassic);
+    const failure = new Error('voll');
+    const onError = vi.fn();
+    const sink: RetrainingSink = {
+      synced: () => new Set(),
+      sync: () => {
+        throw failure;
+      },
+      forget: () => {},
+    };
+    const { store } = await setup({ backend, retraining: sink, onError });
+    await store.syncRetraining();
+    expect(onError).toHaveBeenCalledWith(failure);
+  });
+
+  it('marks tournaments as synced even without mappable candidates, only in the one-time sync', async () => {
+    const calls: Array<[string, number, boolean | undefined]> = [];
+    const sink: RetrainingSink = {
+      synced: () => new Set(),
+      sync: (id, candidates, markSynced) => {
+        calls.push([id, candidates.length, markSynced]);
+      },
+      forget: () => {},
+    };
+    const { store, backend } = await setup({ retraining: sink });
+    await store.importText(dailyClassic);
+    expect(calls).toEqual([['318096259', 3, undefined]]);
+    const { store: later } = await setup({ backend, retraining: sink });
+    await later.syncRetraining();
+    expect(calls[1]).toEqual(['318096259', 3, true]);
   });
 });

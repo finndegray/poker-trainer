@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import dailyClassic from '../../review/fixtures/daily-classic.txt?raw';
 import bounty from '../../review/fixtures/bounty.txt?raw';
 import { memoryReviewBackend, tournamentKey } from '../../review/archive';
 import { EXPORT_KEY, withArchive } from '../../review/export';
@@ -139,6 +140,38 @@ describe('SettingsScreen with the hand archive', () => {
     fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(withArchive(serialize(emptyState()), part))] } });
     expect(await screen.findByText('Spielstand importiert. Hand-Archiv: 1 Hand ergänzt, 0 schon vorhanden.')).toBeTruthy();
     expect(review.getSnapshot().tournaments[0]).toMatchObject({ id: '318083464', kind: 'normal' });
+  });
+
+  it('feeds the retraining queue from the archive after a save import', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { store, review, loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(async () => {
+      await loaded;
+      await review.importText(dailyClassic);
+    });
+    expect(store.getSnapshot().save.retraining?.entries.length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(serialize(emptyState()))] } });
+    expect(await screen.findByText('Spielstand importiert.')).toBeTruthy();
+    await waitFor(() => expect(store.getSnapshot().save.retraining?.entries.length).toBeGreaterThan(0));
+    expect(store.getSnapshot().save.retraining?.synced).toEqual(['318096259']);
+  });
+
+  it('feeds the queue after a save import with an archive part and keeps the import message when the sync fails', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { store, review, loaded } = renderWithStore(<SettingsScreen onBack={() => {}} />);
+    await act(() => loaded);
+    const part = {
+      reviewSchemaVersion: 1 as const,
+      tournaments: [{ id: '318096259', name: 'Daily', kind: 'normal' as const }],
+      hands: dailyClassic.split(/\n(?=Poker Hand #)/).map((raw, i) => ({ id: `h${i}`, tournamentId: '318096259', raw })),
+    };
+    fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(withArchive(serialize(emptyState()), part))] } });
+    expect(await screen.findByText(/^Spielstand importiert\. Hand-Archiv: 6 Hände ergänzt/)).toBeTruthy();
+    await waitFor(() => expect(store.getSnapshot().save.retraining?.entries.length).toBeGreaterThan(0));
+    vi.spyOn(review, 'syncRetraining').mockRejectedValueOnce(new Error('IDB weg'));
+    fireEvent.change(screen.getByLabelText('Spielstand-Datei'), { target: { files: [file(serialize(emptyState()))] } });
+    await waitFor(() => expect(review.syncRetraining).toHaveBeenCalled());
+    expect(await screen.findByText(/^Spielstand importiert\./)).toBeTruthy();
   });
 
   it('imports nothing when the archive part is broken', async () => {

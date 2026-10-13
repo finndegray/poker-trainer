@@ -16,6 +16,7 @@
     "data:equity": "tsx scripts/compute-equity.ts",
     "data:pushfold": "tsx scripts/build-pushfold.ts",
     "data:print": "tsx scripts/print-ranges.ts",
+    "charts:print": "tsx scripts/print-charts.ts",
     "icons": "tsx scripts/make-icons.ts",
     "check:portability": "node scripts/check-portability.mjs ."
   },

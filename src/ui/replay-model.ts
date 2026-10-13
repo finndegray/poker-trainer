@@ -21,9 +21,12 @@ const isPost = (e: HandEvent) => e.type === 'ante' || e.type === 'smallBlind' ||
 
 function nameOf(state: TableState, player: string): string {
   const p = state.players.find((x) => x.name === player);
-  if (!p || p.isHero) return 'Du';
+  if (!p) return player;
+  if (p.isHero) return 'Du';
   return p.position ? POSITION_LABELS[p.position] : player;
 }
+
+const isHeroName = (state: TableState, player: string) => state.players.some((x) => x.name === player && x.isHero);
 
 export function describeEvent(event: HandEvent, state: TableState, bigBlind: number): string {
   const bb = (chips: number) => `${formatChipsBb(chips, bigBlind)} BB`;
@@ -35,9 +38,9 @@ export function describeEvent(event: HandEvent, state: TableState, bigBlind: num
     case 'uncalled':
       return `${nameOf(state, event.player)}: ${bb(event.amount)} zurück`;
     case 'show':
-      return `${nameOf(state, event.player)} zeigt ${event.cards.map(cardName).join(' ')}`;
+      return `${nameOf(state, event.player)} ${isHeroName(state, event.player) ? 'zeigst' : 'zeigt'} ${event.cards.map(cardName).join(' ')}`;
     case 'collect':
-      return `${nameOf(state, event.player)} gewinnt ${bb(event.amount)}`;
+      return `${nameOf(state, event.player)} ${isHeroName(state, event.player) ? 'gewinnst' : 'gewinnt'} ${bb(event.amount)}`;
     default:
       return '';
   }

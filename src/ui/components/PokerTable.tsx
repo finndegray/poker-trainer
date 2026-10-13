@@ -45,11 +45,13 @@ export function TableView({ model, cards, situation, info, board = [] }: TableVi
             </div>
           )}
           <div className="poker-table__situation">{situation}</div>
-          <div className="poker-table__cards">
-            {shown.map((card, i) => (
-              <PlayingCard key={`${card}-${i}`} card={card} delayMs={i * 120} />
-            ))}
-          </div>
+          {shown.length > 0 && (
+            <div className="poker-table__cards">
+              {shown.map((card, i) => (
+                <PlayingCard key={`${card}-${i}`} card={card} delayMs={i * 120} />
+              ))}
+            </div>
+          )}
         </div>
         {model.seats.map((seat) => (
           <div

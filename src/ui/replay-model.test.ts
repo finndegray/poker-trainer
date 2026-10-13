@@ -3,8 +3,9 @@ import { getPushFoldData } from '../app/data';
 import { analyzeHand } from '../review/analysis';
 import bounty from '../review/fixtures/bounty.txt?raw';
 import steps from '../review/fixtures/step-satellites.txt?raw';
-import { parseHand, parseHistory } from '../review/parse';
-import { replaySteps, replayTableModel } from './replay-model';
+import { parseCard } from '../engine/cards';
+import { HERO, parseHand, parseHistory } from '../review/parse';
+import { describeEvent, replaySteps, replayTableModel } from './replay-model';
 
 const hand = parseHand(bounty);
 const decisions = analyzeHand(hand, getPushFoldData()).decisions;
@@ -35,6 +36,14 @@ describe('replaySteps', () => {
     expect(texts).toContain('CO: Raise auf 30,1 BB');
     expect(texts).toContain('CO: 88 BB zurück');
     expect(texts).toContain('CO gewinnt 77,6 BB');
+  });
+
+  it('addresses the hero in the second person and keeps unknown names', () => {
+    const state = list[0].state;
+    const cards = [parseCard('Ah'), parseCard('Kd')];
+    expect(describeEvent({ type: 'show', player: HERO, cards }, state, hand.bigBlind)).toBe('Du zeigst Ah Kd');
+    expect(describeEvent({ type: 'collect', player: HERO, amount: 1200 }, state, hand.bigBlind)).toBe('Du gewinnst 10 BB');
+    expect(describeEvent({ type: 'show', player: 'unbekannt', cards }, state, hand.bigBlind)).toBe('unbekannt zeigt Ah Kd');
   });
 });
 

@@ -51,10 +51,13 @@ export function postflopNumbers(event: ActionEvent, state: TableState, villain: 
   const hero = state.players.find((p) => p.isHero)!;
   const other = state.players.find((p) => p.name === villain)!;
   const toCall = Math.min(hero.stack, maxStreetBet(state) - hero.streetBet);
-  const needed = toCall > 0 ? toCall / (state.pot + toCall) : 0;
+  // The part of the bet the hero cannot match goes back to the villain: it is not in the pot the hero can win.
+  const excess = Math.max(0, maxStreetBet(state) - hero.streetBet - hero.stack);
+  const pot = state.pot - excess;
+  const needed = toCall > 0 ? toCall / (pot + toCall) : 0;
   const betShare =
-    event.action === 'bet' ? event.amount / state.pot : event.action === 'raise' ? (event.amount - toCall) / (state.pot + toCall) : null;
-  return { toCall, needed, betShare, spr: Math.min(hero.stack, other.stack) / state.pot };
+    event.action === 'bet' ? event.amount / pot : event.action === 'raise' ? (event.amount - toCall) / (pot + toCall) : null;
+  return { toCall, needed, betShare, spr: Math.min(hero.stack, other.stack) / pot };
 }
 
 const KEEP: Record<'bet' | 'raise' | 'allIn' | 'call' | 'check', { share: number; from: 'strong' | 'weak' }> = {

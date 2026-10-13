@@ -5,7 +5,7 @@ import { chartFor } from '../engine/preflop/charts';
 import { positionsOf, walkHand } from './hand-model';
 import { parseHand } from './parse';
 import { type PostflopRating, ratePostflop } from './postflop';
-import { KEEP_AFTER_BET } from './postflop-rules';
+import { KEEP_AFTER_ALL_IN, KEEP_AFTER_BET } from './postflop-rules';
 import { type TestHandOptions, foldsBetween, ggHand } from './test-hands';
 
 // CO opens, the hero calls on the button, the blinds fold: pot 670 chips (BB 100, ante 10) on the flop.
@@ -72,5 +72,35 @@ describe('ratePostflop', () => {
   it('is deterministic: the same hand gives the same equities (fixed seed per decision)', () => {
     const o = { heroCards: 'Qh Jh', lines: [...PRE, FLOP, 'CO: bets 300', 'Hero: calls 300', TURN, 'CO: checks', 'Hero: bets 600'] };
     expect(ratings(o)).toEqual(ratings(o));
+  });
+  describe('villain bet larger than the hero stack', () => {
+    // Hero has 30 BB (2,780 chips left after the call), CO shoves 9,780 into 670: only 2,780 of it can be matched.
+    const SHOVE = [...PRE, FLOP, 'CO: bets 9,780 and is all-in'];
+    const spot = (heroCards: string, action: string) => ratings({ heroCards, stacksBb: { BTN: 30 }, lines: [...SHOVE, action] });
+
+    it('needed equity uses the pot without the uncalled part (fold is not a mistake)', () => {
+      const [fold] = spot('Qh Jh', 'Hero: folds');
+      expect(postflop(fold).needed).toBeCloseTo(2780 / (3450 + 2780), 9);
+      expect(fold).toMatchObject({ model: 'postflop', verdict: 'ok' });
+    });
+
+    it('a call shows the same corrected needed equity', () => {
+      const [call] = spot('Qh Jh', 'Hero: calls 2,780');
+      expect(postflop(call).needed).toBeCloseTo(2780 / (3450 + 2780), 9);
+    });
+
+    it('a normal bet keeps its numbers (no uncalled part)', () => {
+      const [call] = ratings({ heroCards: 'Ah Kd', lines: [...PRE, FLOP, 'CO: bets 1,000', 'Hero: calls 1,000'] });
+      expect(postflop(call).needed).toBeCloseTo(1000 / 2670, 9);
+    });
+  });
+
+  it('keeps the range weights from street to street and applies KEEP_AFTER_ALL_IN to a villain shove', () => {
+    const base = [...PRE, FLOP, 'CO: checks', 'Hero: checks', TURN];
+    const [, afterBet] = ratings({ heroCards: 'Ah Kd', lines: [...base, 'CO: bets 300', 'Hero: calls 300'] }).map((r) => postflop(r).combos);
+    const [, afterShove] = ratings({ heroCards: 'Ah Kd', stacksBb: { BTN: 30 }, lines: [...base, 'CO: bets 9,780 and is all-in', 'Hero: calls 2,780'] }).map((r) => postflop(r).combos);
+    expect(afterBet).toBeDefined();
+    expect(afterShove).toBeDefined();
+    expect(afterShove / afterBet).toBeCloseTo(KEEP_AFTER_ALL_IN / KEEP_AFTER_BET, 6);
   });
 });

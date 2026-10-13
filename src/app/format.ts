@@ -4,6 +4,7 @@ import { type PreflopAction, type PreflopSpot, betsFor } from '../engine/preflop
 import type { Action, Verdict } from '../engine/pushfold';
 import type { SpotKind } from '../engine/spot-generator';
 import type { XpResult } from '../game/xp';
+import type { ActionType as ReviewActionType, Street as ReviewStreet } from '../review/parse';
 
 const evNumber = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const MINUS = '−';
@@ -76,4 +77,38 @@ export function xpSummary(xp: XpResult): string {
   if (xp.multiplier > 1) parts.push(`Combo ×${multiplierNumber.format(xp.multiplier)}`);
   if (xp.combo >= 2) parts.push(`${xp.combo} in Folge`);
   return parts.join(' · ');
+}
+
+const per100Number = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
+/** "Fehler pro 100 Hände", e.g. 3,2; a dash without hands. */
+export const formatPer100 = (value: number | null): string => (value === null ? '–' : per100Number.format(value));
+
+/** Chips as BB with the decimal comma, e.g. 1.650 chips at BB 300 → "5,5". */
+export const formatChipsBb = (chips: number, bigBlind: number): string => formatBb(chips / bigBlind);
+
+/** "2026-10-13" → "13.10.2026". */
+export const formatDateKey = (key: string): string => `${key.slice(8, 10)}.${key.slice(5, 7)}.${key.slice(0, 4)}`;
+
+/** "2026-10-13 15:46:28" → "13.10.2026 15:46". */
+export const formatPlayedAt = (playedAt: string): string => `${formatDateKey(playedAt.slice(0, 10))} ${playedAt.slice(11, 16)}`;
+
+export type ReviewActionInput = { action: ReviewActionType; amount: number; to: number | null; allIn: boolean };
+
+const STREET_LABELS: Record<ReviewStreet, string> = { preflop: 'Preflop', flop: 'Flop', turn: 'Turn', river: 'River' };
+export const streetLabel = (street: ReviewStreet): string => STREET_LABELS[street];
+
+/** A hand-history action in German: "Fold", "Check", "Call 1,5 BB", "Bet 3 BB", "Raise auf 6 BB", with " · All-in". */
+export function reviewActionLabel(a: ReviewActionInput, bigBlind: number): string {
+  const bb = (chips: number) => `${formatChipsBb(chips, bigBlind)} BB`;
+  const text =
+    a.action === 'fold'
+      ? 'Fold'
+      : a.action === 'check'
+        ? 'Check'
+        : a.action === 'call'
+          ? `Call ${bb(a.amount)}`
+          : a.action === 'bet'
+            ? `Bet ${bb(a.amount)}`
+            : `Raise auf ${bb(a.to ?? a.amount)}`;
+  return a.allIn && a.action !== 'fold' && a.action !== 'check' ? `${text} · All-in` : text;
 }

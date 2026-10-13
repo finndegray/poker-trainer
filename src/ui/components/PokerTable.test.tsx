@@ -2,7 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { parseCard, parseHand } from '../../engine/cards';
-import { PokerTable, PreflopTable } from './PokerTable';
+import { PokerTable, PreflopTable, TableView } from './PokerTable';
 
 const cards = [parseCard('Ah'), parseCard('7c')] as const;
 
@@ -64,5 +64,14 @@ describe('PreflopTable', () => {
     render(<PreflopTable spot={{ kind: 'rfi', stack: 40, hero: 'UTG1', villain: null, hand }} cards={cards} />);
     expect(screen.getByText('Alle folden zu dir')).toBeTruthy();
     expect(screen.getByText('Du sitzt im UTG+1 · 40 BB effektiv · noch 6 Spieler hinter dir')).toBeTruthy();
+  });
+  it('shows the board and works without hero cards (hand review)', () => {
+    const model = { seats: [], playersBehind: 0, potBb: 12.5, heroStackBb: 30 };
+    render(<TableView model={model} cards={[]} board={[parseCard('Kh'), parseCard('5s'), parseCard('4d')]} situation="Flop" info="Schritt 2 von 9" />);
+    const board = screen.getByLabelText('Board');
+    expect(board.querySelectorAll('.playing-card')).toHaveLength(3);
+    expect(screen.getByRole('img', { name: 'Herz König' })).toBeTruthy();
+    expect(screen.getByText('Pot 12,5 BB')).toBeTruthy();
+    expect(screen.getByText('Schritt 2 von 9')).toBeTruthy();
   });
 });

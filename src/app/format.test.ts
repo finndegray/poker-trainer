@@ -5,12 +5,18 @@ import {
   aggressiveWord,
   evLine,
   formatBb,
+  formatChipsBb,
   formatCount,
+  formatDateKey,
   formatEv,
+  formatPer100,
   formatPercent,
+  formatPlayedAt,
   preflopChoiceLabel,
   preflopSituationText,
   preflopSpotTitle,
+  reviewActionLabel,
+  streetLabel,
   verdictLabel,
   xpSummary,
 } from './format';
@@ -91,5 +97,23 @@ describe('starthand formatting', () => {
     expect(xpSummary({ xp: 23, combo: 5, multiplier: 1.5 })).toBe('+23 XP · Combo ×1,5 · 5 in Folge');
     expect(xpSummary({ xp: 15, combo: 1, multiplier: 1 })).toBe('+15 XP');
     expect(xpSummary({ xp: 0, combo: 0, multiplier: 1 })).toBe('0 XP');
+  });
+  it('formats the hand review numbers and dates', () => {
+    expect(formatPer100(null)).toBe('–');
+    expect(formatPer100(3.25)).toBe('3,3');
+    expect(formatPer100(50)).toBe('50');
+    expect(formatChipsBb(1650, 300)).toBe('5,5');
+    expect(formatChipsBb(19680, 1200)).toBe('16,4');
+    expect(formatDateKey('2026-10-13')).toBe('13.10.2026');
+    expect(formatPlayedAt('2026-10-13 15:46:28')).toBe('13.10.2026 15:46');
+    expect(streetLabel('turn')).toBe('Turn');
+  });
+
+  it('labels hand-history actions in BB', () => {
+    expect(reviewActionLabel({ action: 'fold', amount: 0, to: null, allIn: false }, 100)).toBe('Fold');
+    expect(reviewActionLabel({ action: 'check', amount: 0, to: null, allIn: false }, 100)).toBe('Check');
+    expect(reviewActionLabel({ action: 'call', amount: 150, to: null, allIn: false }, 100)).toBe('Call 1,5 BB');
+    expect(reviewActionLabel({ action: 'bet', amount: 300, to: null, allIn: true }, 100)).toBe('Bet 3 BB · All-in');
+    expect(reviewActionLabel({ action: 'raise', amount: 500, to: 600, allIn: false }, 100)).toBe('Raise auf 6 BB');
   });
 });

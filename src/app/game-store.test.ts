@@ -2,24 +2,37 @@ import { describe, expect, it, vi } from 'vitest';
 import { handClassOf } from '../engine/cards';
 import { mulberry32 } from '../engine/rng';
 import { makeFixture } from '../engine/test-fixtures';
-import { emptyState } from '../storage/schema';
+import { aggressiveAction, evOf, type Action, type Spot } from '../engine/pushfold';
+import type { PushFoldData } from '../engine/pushfold-data';
+import { dailySpots } from '../game/daily';
+import { RUN_LEVEL_STACKS, startRun } from '../game/endphase-run';
+import { deserialize, emptyState, SaveFormatError, serialize, type SaveState } from '../storage/schema';
 import { createGameStore, type GameStoreDeps } from './game-store';
 import type { PersistenceInfo } from './persistence';
 
 const info: PersistenceInfo = { mode: 'memory', readOnly: false, otherTabActive: false, corruptBackup: null };
 
-function setup(over: Partial<PersistenceInfo> = {}) {
+function setup(over: Partial<PersistenceInfo> = {}, initial: SaveState = emptyState()) {
   let t = 1000;
   const save = vi.fn();
+  const create = vi.fn(async () => 'corrupt-backup:test');
   const deps: GameStoreDeps = {
     data: makeFixture((h) => (84 - h) / 10),
-    persistence: { initial: emptyState(), info: { ...info, ...over }, save },
+    persistence: {
+      initial,
+      info: { ...info, ...over },
+      save,
+      backups: { list: async () => [], read: async () => undefined, remove: async () => {}, create },
+    },
     rng: mulberry32(1),
     now: () => new Date(2026, 9, 13, 18, 0),
     clock: () => t,
   };
-  return { store: createGameStore(deps), save, advance: (ms: number) => (t += ms) };
+  return { store: createGameStore(deps), save, create, data: deps.data, advance: (ms: number) => (t += ms) };
 }
+
+const rightAction = (data: PushFoldData, spot: Spot): Action => (evOf(data, spot) > 0 ? aggressiveAction(spot) : 'fold');
+const wrongAction = (data: PushFoldData, spot: Spot): Action => (evOf(data, spot) > 0 ? 'fold' : aggressiveAction(spot));
 
 describe('createGameStore', () => {
   it('starts with the saved state and no spot', () => {
@@ -95,6 +108,7 @@ describe('adoptSavedState', () => {
     expect(s.current).toBeNull();
     expect(s.last).toBeNull();
     expect(s.notice).toBe('writer-acquired');
+    expect(s.celebration).toBeNull();
     store.dismissNotice();
     expect(store.getSnapshot().notice).toBeNull();
   });
@@ -155,5 +169,330 @@ describe('resumeTraining', () => {
     store.resumeTraining();
     expect(store.getSnapshot().last).toBeNull();
     expect(store.getSnapshot().current?.shownAt).toBe(1010);
+  });
+});
+
+describe('daily challenge', () => {
+  it('plays the 20 spots of the day and records the result once', () => {
+    const { store, data, advance } = setup();
+    store.startDaily();
+    const expected = dailySpots(data, '2026-10-13');
+    for (let i = 0; i < 20; i++) {
+      const snap = store.getSnapshot();
+      expect(snap.session).toMatchObject({ kind: 'daily', index: i });
+      expect(snap.current?.spot).toEqual(expected[i]);
+      store.answer(i < 15 ? rightAction(data, snap.current!.spot) : wrongAction(data, snap.current!.spot));
+      expect(store.getSnapshot().last?.outcome.record.mode).toBe('daily');
+      advance(1000);
+      store.next();
+    }
+    const snap = store.getSnapshot();
+    expect(snap.current).toBeNull();
+    expect(snap.session).toMatchObject({ kind: 'daily', outcome: { accepted: true, isPersonalBest: true } });
+    const outcome = (snap.session as { outcome: { result: { correct: number; total: number } } }).outcome;
+    expect(outcome.result.total).toBe(20);
+    expect(outcome.result.correct).toBeGreaterThanOrEqual(15);
+    expect(snap.save.daily['2026-10-13']).toEqual(outcome.result);
+    expect(snap.status.dailyToday).toEqual(outcome.result);
+
+    store.startDaily();
+    expect(store.getSnapshot().session).toBe(snap.session);
+
+    store.startDaily({ restart: true });
+    for (let i = 0; i < 20; i++) {
+      store.answer('fold');
+      store.next();
+    }
+    expect(store.getSnapshot().session).toMatchObject({ outcome: { accepted: false } });
+  });
+
+  it('records the daily as soon as the last spot is answered', () => {
+    const { store, data, advance } = setup();
+    store.startDaily();
+    for (let i = 0; i < 20; i++) {
+      store.answer(rightAction(data, store.getSnapshot().current!.spot));
+      advance(1000);
+      if (i < 19) store.next();
+    }
+    const done = store.getSnapshot();
+    const outcome = (done.session as { outcome: { result: { durationMs: number } } | null }).outcome;
+    expect(outcome).not.toBeNull();
+    expect(outcome!.result.durationMs).toBeGreaterThan(0);
+    expect(done.save.daily['2026-10-13']).toEqual(outcome!.result);
+    expect(done.last).not.toBeNull();
+    store.next();
+    const after = store.getSnapshot();
+    expect(after.current).toBeNull();
+    expect(after.last).toBeNull();
+    expect(after.session).toBe(done.session);
+    expect(after.save).toBe(done.save);
+  });
+
+  it('ignores next() while the current daily spot is unanswered', () => {
+    const { store } = setup();
+    store.startDaily();
+    const before = store.getSnapshot().current;
+    store.next();
+    expect(store.getSnapshot().current).toBe(before);
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 0 });
+  });
+
+  it('resumes an unfinished daily instead of restarting it', () => {
+    const { store, advance } = setup();
+    store.startDaily();
+    store.answer('fold');
+    store.next();
+    advance(5000);
+    store.startDaily();
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 1 });
+    expect(store.getSnapshot().current?.shownAt).toBe(6000);
+  });
+});
+
+describe('endphase run', () => {
+  it('runs until the third mistake and records the run', () => {
+    const { store, data } = setup();
+    store.startRun();
+    expect(store.getSnapshot().save.activeRun).toMatchObject({ status: 'running', lives: 3 });
+    for (let i = 0; i < 40 && !(store.getSnapshot().session as { outcome: unknown }).outcome; i++) {
+      const spot = store.getSnapshot().current!.spot;
+      store.answer(wrongAction(data, spot));
+      expect(store.getSnapshot().last?.outcome.record.mode).toBe('run');
+      store.next();
+    }
+    const snap = store.getSnapshot();
+    // Close spots cost no life, so the bust level depends on the dealt spots; the run must end before the final table.
+    expect(snap.session).toMatchObject({ kind: 'run', outcome: { summary: { finalTable: false }, isPersonalBest: true } });
+    const summary = (snap.session as { outcome: { summary: { placement: number } } }).outcome.summary;
+    expect(summary.placement).toBeGreaterThan(10);
+    expect(snap.save.activeRun).toBeNull();
+    expect(snap.save.bestRun?.placement).toBe(summary.placement);
+    expect(snap.current).toBeNull();
+  });
+
+  it('ignores next() while the current run spot is unanswered', () => {
+    const { store } = setup();
+    store.startRun();
+    const before = store.getSnapshot();
+    store.next();
+    expect(store.getSnapshot().current).toBe(before.current);
+    expect(store.getSnapshot().save.activeRun).toBe(before.save.activeRun);
+  });
+
+  it('continues a saved run after a reload', () => {
+    const initial: SaveState = { ...emptyState(), activeRun: { ...startRun(), levelIndex: 2, answered: 10 } };
+    const { store } = setup({}, initial);
+    store.startRun();
+    const snap = store.getSnapshot();
+    expect(snap.save.activeRun).toMatchObject({ levelIndex: 2, answered: 10 });
+    expect(Math.abs(snap.current!.spot.stack - RUN_LEVEL_STACKS[2])).toBeLessThanOrEqual(1);
+  });
+
+  it('keeps a finished run visible until restarted', () => {
+    const { store, data } = setup();
+    store.startRun();
+    while (!(store.getSnapshot().session as { outcome: unknown }).outcome) {
+      store.answer(wrongAction(data, store.getSnapshot().current!.spot));
+      store.next();
+    }
+    const finished = store.getSnapshot().session;
+    store.startRun();
+    expect(store.getSnapshot().session).toBe(finished);
+    store.startRun({ restart: true });
+    expect(store.getSnapshot().session).toEqual({ kind: 'run', outcome: null });
+    expect(store.getSnapshot().save.activeRun?.status).toBe('running');
+  });
+});
+
+describe('celebration, export and import', () => {
+  it('celebrates a rank-up until dismissed', () => {
+    const initial: SaveState = { ...emptyState(), profile: { xp: 495, combo: 0, soundOn: true } };
+    const { store, data } = setup({}, initial);
+    store.startTraining();
+    store.answer(rightAction(data, store.getSnapshot().current!.spot));
+    expect(store.getSnapshot().celebration).toBe('Donkey');
+    store.dismissCelebration();
+    expect(store.getSnapshot().celebration).toBeNull();
+  });
+
+  it('celebrates a rank-up caused by the run bonus xp', () => {
+    const run = { ...startRun(), levelIndex: 7, spotInLevel: 4, lives: 1, answered: 39 };
+    const initial: SaveState = { ...emptyState(), profile: { xp: 1890, combo: 0, soundOn: true }, activeRun: run };
+    const { store, data } = setup({}, initial);
+    store.startRun();
+    store.answer(rightAction(data, store.getSnapshot().current!.spot));
+    const snap = store.getSnapshot();
+    expect(snap.session).toMatchObject({ kind: 'run', outcome: { summary: { finalTable: true } } });
+    expect(snap.celebration).toBe('Grinder');
+  });
+
+  it('resets the celebration on import', async () => {
+    const initial: SaveState = { ...emptyState(), profile: { xp: 495, combo: 0, soundOn: true } };
+    const { store, data } = setup({}, initial);
+    store.startTraining();
+    store.answer(rightAction(data, store.getSnapshot().current!.spot));
+    expect(store.getSnapshot().celebration).toBe('Donkey');
+    await store.importState(serialize(emptyState()));
+    expect(store.getSnapshot().celebration).toBeNull();
+  });
+
+  it('aborts the import when the backup fails', async () => {
+    const { store, save, create } = setup();
+    const failure = new Error('Backup voll');
+    create.mockRejectedValueOnce(failure);
+    const before = store.getSnapshot();
+    await expect(store.importState(serialize({ ...emptyState(), profile: { xp: 900, combo: 0, soundOn: true } }))).rejects.toBe(failure);
+    expect(store.getSnapshot()).toBe(before);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('backs up the current state before importing', async () => {
+    const initial: SaveState = { ...emptyState(), profile: { xp: 120, combo: 0, soundOn: true } };
+    const { store, save, create } = setup({}, initial);
+    const imported: SaveState = { ...emptyState(), profile: { xp: 900, combo: 0, soundOn: false } };
+    await store.importState(serialize(imported));
+    expect(create).toHaveBeenCalledWith(serialize(initial));
+    expect(store.getSnapshot().save).toEqual(imported);
+    expect(save).toHaveBeenLastCalledWith(imported);
+    expect(JSON.parse(store.exportState()).profile.xp).toBe(900);
+  });
+
+  it('rejects an invalid import without changing anything', async () => {
+    const { store, create } = setup();
+    await expect(store.importState('{kaputt')).rejects.toBeInstanceOf(SaveFormatError);
+    expect(create).not.toHaveBeenCalled();
+    expect(store.getSnapshot().save).toEqual(emptyState());
+  });
+
+  it('blocks every mode in read-only mode', () => {
+    const { store } = setup({ readOnly: true });
+    expect(() => store.startTraining()).toThrow();
+    expect(() => store.startDaily()).toThrow();
+    expect(() => store.startRun()).toThrow();
+  });
+});
+
+describe('getBackups', () => {
+  it('exposes the persistence backups', async () => {
+    const { store, create } = setup();
+    await store.getBackups().create('{}');
+    expect(create).toHaveBeenCalledWith('{}');
+  });
+});
+
+describe('daily progress across reloads', () => {
+  /** The state a reload would read back: the last saved state, through the storage format. */
+  const reloaded = (save: ReturnType<typeof vi.fn>): SaveState => deserialize(serialize(save.mock.lastCall![0] as SaveState));
+
+  function playSeven() {
+    const first = setup();
+    const { store, data, advance } = first;
+    store.startDaily();
+    let correct = 0;
+    for (let i = 0; i < 7; i++) {
+      const spot = store.getSnapshot().current!.spot;
+      const action = i % 2 === 0 ? rightAction(data, spot) : wrongAction(data, spot);
+      advance(1000);
+      if (store.answer(action).outcome.grade.verdict !== 'wrong') correct++;
+      store.next();
+    }
+    return { ...first, correct };
+  }
+
+  it('saves the progress with every daily answer', () => {
+    const { store, save, correct } = playSeven();
+    expect(store.getSnapshot().save.dailyProgress).toEqual({ dateKey: '2026-10-13', index: 7, correct, elapsedMs: 7000 });
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ dailyProgress: { dateKey: '2026-10-13', index: 7, correct, elapsedMs: 7000 } }));
+  });
+
+  it('resumes the daily in a new store after a reload and records it once', () => {
+    const { save, data, correct } = playSeven();
+    const { store, advance, save: save2 } = setup({}, reloaded(save));
+    const expected = dailySpots(data, '2026-10-13');
+    store.startDaily();
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 7, correct });
+    expect(store.getSnapshot().current?.spot).toEqual(expected[7]);
+    for (let i = 7; i < 20; i++) {
+      expect(store.getSnapshot().current?.spot).toEqual(expected[i]);
+      advance(1000);
+      store.answer('fold');
+      store.next();
+    }
+    const snap = store.getSnapshot();
+    expect(snap.session).toMatchObject({ kind: 'daily', outcome: { accepted: true, result: { total: 20, durationMs: 20_000 } } });
+    expect(snap.save.daily['2026-10-13']).toBeDefined();
+    expect(snap.save.dailyProgress).toBeNull();
+    expect(save2).toHaveBeenLastCalledWith(expect.objectContaining({ dailyProgress: null }));
+    // Only one save recorded the daily, and in the same commit the progress was cleared.
+    const withDaily = save2.mock.calls.filter(([s]) => (s as SaveState).daily['2026-10-13']);
+    expect(withDaily).toHaveLength(1);
+    expect((withDaily[0][0] as SaveState).dailyProgress).toBeNull();
+  });
+
+  it('resumes the saved progress after switching to training and back', () => {
+    const { save, correct } = playSeven();
+    const { store, data } = setup({}, reloaded(save));
+    store.startTraining();
+    store.answer(rightAction(data, store.getSnapshot().current!.spot));
+    store.startDaily();
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 7, correct });
+    expect(store.getSnapshot().current?.spot).toEqual(dailySpots(data, '2026-10-13')[7]);
+  });
+
+  it('starts over and clears the progress on restart', () => {
+    const { save } = playSeven();
+    const { store, save: save2 } = setup({}, reloaded(save));
+    store.startDaily({ restart: true });
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 0, correct: 0 });
+    expect(store.getSnapshot().save.dailyProgress).toBeNull();
+    expect(save2).toHaveBeenLastCalledWith(expect.objectContaining({ dailyProgress: null }));
+  });
+
+  it('ignores and clears progress from an older day', () => {
+    const initial: SaveState = { ...emptyState(), dailyProgress: { dateKey: '2026-10-12', index: 9, correct: 6, elapsedMs: 30_000 } };
+    const { store, save, data } = setup({}, initial);
+    store.startDaily();
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', dateKey: '2026-10-13', index: 0, correct: 0, startedAt: 1000 });
+    expect(store.getSnapshot().current?.spot).toEqual(dailySpots(data, '2026-10-13')[0]);
+    expect(store.getSnapshot().save.dailyProgress).toBeNull();
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ dailyProgress: null }));
+  });
+});
+
+describe('timers while the app is hidden', () => {
+  it('does not count hidden time for the current spot', () => {
+    const { store, advance } = setup();
+    store.startTraining();
+    advance(500);
+    store.onVisibilityChange(false);
+    advance(60_000);
+    store.onVisibilityChange(true);
+    advance(700);
+    expect(store.answer('fold').outcome.record.responseMs).toBe(1200);
+  });
+
+  it('does not count hidden time for the daily duration', () => {
+    const { store, advance } = setup();
+    store.startDaily();
+    for (let i = 0; i < 20; i++) {
+      advance(1000);
+      if (i === 10) {
+        store.onVisibilityChange(false);
+        advance(300_000);
+        store.onVisibilityChange(true);
+      }
+      store.answer('fold');
+      store.next();
+    }
+    expect(store.getSnapshot().session).toMatchObject({ outcome: { result: { durationMs: 20_000 } } });
+  });
+
+  it('ignores a visible event without a hidden one before', () => {
+    const { store, advance } = setup();
+    store.startTraining();
+    const before = store.getSnapshot();
+    advance(100);
+    store.onVisibilityChange(true);
+    expect(store.getSnapshot()).toBe(before);
   });
 });

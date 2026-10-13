@@ -21,7 +21,7 @@ describe('schema', () => {
   it('creates an empty state', () => {
     expect(emptyState()).toEqual({
       schemaVersion: 1, profile: { xp: 0, combo: 0, soundOn: true },
-      days: {}, decisions: [], daily: {}, runs: [], bestRun: null, activeRun: null,
+      days: {}, decisions: [], daily: {}, runs: [], bestRun: null, activeRun: null, dailyProgress: null,
     });
   });
 
@@ -118,5 +118,54 @@ describe('active run', () => {
     ];
     for (const activeRun of bad) expect(() => migrate({ ...emptyState(), activeRun })).toThrow(SaveFormatError);
     expect(() => migrate({ ...emptyState(), activeRun: undefined })).toThrow(SaveFormatError);
+  });
+});
+
+describe('daily progress', () => {
+  // Exactly as the main branch writes it: schema version 1 without the dailyProgress key.
+  const MAIN_SAVE = '{"schemaVersion":1,"profile":{"xp":340,"combo":2,"soundOn":true},"days":{"2026-10-12":24,"2026-10-13":5},'
+    + '"decisions":[{"ts":1760371200000,"dateKey":"2026-10-13","mode":"training","spot":{"kind":"open","position":"BTN","stack":10,"hand":5},'
+    + '"chosen":"shove","verdict":"correct","responseMs":1800}],'
+    + '"daily":{"2026-10-12":{"dateKey":"2026-10-12","correct":16,"total":20,"durationMs":95000}},'
+    + '"runs":[{"ts":1760371300000,"dateKey":"2026-10-12","placement":1240,"finalTable":false,"levelsCompleted":3,"bonusXp":30}],'
+    + '"bestRun":{"ts":1760371300000,"dateKey":"2026-10-12","placement":1240,"finalTable":false,"levelsCompleted":3,"bonusXp":30},'
+    + '"activeRun":{"levelIndex":1,"spotInLevel":2,"lives":2,"status":"running","answered":7}}';
+  const progress = { dateKey: '2026-10-13', index: 7, correct: 5, elapsedMs: 42_000 };
+
+  it('loads a save from the main branch unchanged and with no daily progress', () => {
+    const raw = JSON.parse(MAIN_SAVE);
+    const loaded = deserialize(MAIN_SAVE);
+    expect(loaded).toEqual({ ...raw, dailyProgress: null });
+    expect(deserialize(serialize(loaded))).toEqual(loaded);
+  });
+
+  it('round-trips daily progress', () => {
+    const state: SaveState = { ...emptyState(), dailyProgress: progress };
+    expect(deserialize(serialize(state))).toEqual(state);
+    expect(migrate(JSON.parse(serialize(state))).dailyProgress).not.toBe(state.dailyProgress);
+  });
+
+  it('rejects invalid daily progress', () => {
+    const bad: unknown[] = [
+      7,
+      undefined,
+      { ...progress, index: 20 },
+      { ...progress, index: -1 },
+      { ...progress, index: 2.5 },
+      { ...progress, correct: -1 },
+      { ...progress, correct: 1.5 },
+      { ...progress, elapsedMs: -5 },
+      { ...progress, elapsedMs: 0.5 },
+      { ...progress, dateKey: '13.10.2026' },
+      { ...progress, dateKey: 20261013 },
+    ];
+    for (const dailyProgress of bad) expect(() => migrate({ ...emptyState(), dailyProgress })).toThrow(SaveFormatError);
+  });
+
+  it('rejects more correct answers than answered spots', () => {
+    expect(() => migrate({ ...emptyState(), dailyProgress: { ...progress, index: 3, correct: 50 } })).toThrow(SaveFormatError);
+    expect(() => migrate({ ...emptyState(), dailyProgress: { ...progress, index: 3, correct: 4 } })).toThrow(SaveFormatError);
+    const allCorrect = { ...progress, index: 3, correct: 3 };
+    expect(migrate({ ...emptyState(), dailyProgress: allCorrect }).dailyProgress).toEqual(allCorrect);
   });
 });

@@ -103,6 +103,23 @@ describe('openPersistence', () => {
     expect(backend.dump()[SAVE_KEY]).toBeUndefined();
   });
 
+  it('creates, lists, reads and removes backups when writable', async () => {
+    const backend = memoryBackend();
+    const p = await openPersistence(env({ createBackend: () => backend, locks: lockAvailable }));
+    const key = await p.backups.create('{"stand":1}');
+    expect(await p.backups.list()).toEqual([key]);
+    expect(await p.backups.read(key)).toBe('{"stand":1}');
+    await p.backups.remove(key);
+    expect(await p.backups.list()).toEqual([]);
+  });
+
+  it('refuses to write backups when another tab is the writer', async () => {
+    const p = await openPersistence(env({ locks: lockTaken }));
+    await expect(p.backups.create('{}')).rejects.toThrow('Dieser Tab darf gerade nicht speichern.');
+    await expect(p.backups.remove('corrupt-backup:x')).rejects.toThrow('Dieser Tab darf gerade nicht speichern.');
+    expect(await p.backups.list()).toEqual([]);
+  });
+
   it('is read-only for saves from a newer version', async () => {
     const raw = JSON.stringify({ ...emptyState(), schemaVersion: 2 });
     const backend = memoryBackend({ [SAVE_KEY]: raw });

@@ -8,6 +8,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { mulberry32 } from './engine/rng';
 import { App } from './ui/App';
 import { GameProvider } from './ui/GameContext';
+import { browserAudioFactory, createSoundPlayer } from './ui/sound';
 import './ui/theme.css';
 
 const STATUS_REFRESH_MS = 60_000;
@@ -64,7 +65,9 @@ async function bootstrap(): Promise<void> {
   if (updateNotice) ready.setUpdateAvailable();
   opened.onWriterAcquired((fresh) => ready.adoptSavedState(fresh));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') ready.refreshStatus();
+    const visible = document.visibilityState === 'visible';
+    ready.onVisibilityChange(visible);
+    if (visible) ready.refreshStatus();
     // Apply a waiting update while nobody is looking, so it never interrupts training.
     else policy.onHidden().catch(logError);
   });
@@ -72,10 +75,11 @@ async function bootstrap(): Promise<void> {
   // Cheap, and keeps the day counter right across midnight.
   setInterval(() => ready.refreshStatus(), STATUS_REFRESH_MS);
 
+  const sound = createSoundPlayer(browserAudioFactory);
   appRoot().render(
     <StrictMode>
       <GameProvider store={ready}>
-        <App onApplyUpdate={applyUpdate} />
+        <App onApplyUpdate={applyUpdate} sound={sound} />
       </GameProvider>
     </StrictMode>,
   );

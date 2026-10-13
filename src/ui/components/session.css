@@ -1,0 +1,57 @@
+.session-header {
+  margin: 0;
+  padding: 10px 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.session-header--run {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.session-header__lives {
+  color: var(--danger);
+  font-size: 20px;
+  letter-spacing: 2px;
+}
+
+.result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.result-card p {
+  margin: 0;
+}
+
+.result-card__title {
+  margin: 0;
+  font-size: 22px;
+  color: var(--gold);
+}
+
+.result-card__big {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.result-card__badge {
+  align-self: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-weight: 700;
+}
+
+.result-card__buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}

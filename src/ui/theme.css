@@ -18,6 +18,13 @@
   --cell-close-fold-fg: #ffffff;
   --cell-fold-bg: #1d2b24;
   --cell-fold-fg: #a9bcb1;
+  --heat-low: #24493a;
+  --heat-high: #c0392b;
+  --heat-fg: #ffffff;
+  --heat-none-fg: rgba(243, 233, 198, 0.35);
+  --overlay: rgba(10, 56, 32, 0.82);
+  --rule: rgba(243, 233, 198, 0.12);
+  --axis: rgba(243, 233, 198, 0.3);
   --radius: 10px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: dark;

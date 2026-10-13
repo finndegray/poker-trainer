@@ -4,7 +4,7 @@ import { StatusBar } from '../components/StatusBar';
 import { useGame } from '../GameContext';
 import './screens.css';
 
-export type Screen = 'home' | 'training' | 'daily' | 'run' | 'stats' | 'settings';
+export type Screen = 'home' | 'training' | 'preflop' | 'daily' | 'run' | 'stats' | 'settings';
 
 type Tile = { title: string; text: string; button: string; target: Screen; locked: boolean };
 
@@ -15,6 +15,13 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
   const runRunning = activeRun !== null && activeRun.status === 'running';
 
   const tiles: Tile[] = [
+    {
+      title: 'Starthand-Training',
+      text: 'Open-Raise, 3-Bet und Verteidigung mit 40 und 100 BB',
+      button: 'Starthände trainieren',
+      target: 'preflop',
+      locked,
+    },
     {
       title: 'Daily Challenge',
       text: dailyToday ? `Heute erledigt: ${dailyToday.correct}/${dailyToday.total}` : '20 Spots – heute noch offen',

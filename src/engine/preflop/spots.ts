@@ -1,0 +1,87 @@
+import type { HandClass } from '../cards';
+import { POSITIONS, type Position, seatOf } from '../positions';
+
+export type PreflopKind = 'rfi' | 'vsOpen' | 'vs3bet';
+export const PREFLOP_KINDS: readonly PreflopKind[] = ['rfi', 'vsOpen', 'vs3bet'];
+export type StackDepth = 40 | 100;
+export const STACK_DEPTHS: readonly StackDepth[] = [40, 100];
+export type PreflopAction = 'raise' | 'threeBet' | 'fourBet' | 'call' | 'fold';
+export type PreflopSituation = { kind: PreflopKind; stack: StackDepth; hero: Position; villain: Position | null };
+export type PreflopSpot = PreflopSituation & { hand: HandClass };
+export type ChartKey = string;
+
+const OPEN_RAISE = 2.2;
+const SB_OPEN_RAISE = 3;
+const THREE_BET_IP = 3;
+const THREE_BET_BLINDS = 4;
+const FOUR_BET = 2.2;
+const SB = seatOf('SB');
+const BB = seatOf('BB');
+
+const isBlind = (p: Position) => seatOf(p) >= SB;
+const round1 = (x: number) => Math.round(x * 10) / 10;
+
+export function aggressiveActionOf(kind: PreflopKind): PreflopAction {
+  if (kind === 'rfi') return 'raise';
+  return kind === 'vsOpen' ? 'threeBet' : 'fourBet';
+}
+
+export function allowedActions(kind: PreflopKind): readonly PreflopAction[] {
+  return kind === 'rfi' ? ['raise', 'fold'] : [aggressiveActionOf(kind), 'call', 'fold'];
+}
+
+function invalid(s: PreflopSituation): never {
+  throw new Error(`Ungültiger Starthand-Spot: ${s.kind} ${s.stack} BB, ${s.hero} gegen ${s.villain ?? '–'}`);
+}
+
+export function chartKeyFor(s: PreflopSituation): ChartKey {
+  const hero = seatOf(s.hero);
+  if (s.kind === 'rfi') {
+    if (s.villain !== null || hero > SB) invalid(s);
+    return `rfi:${s.stack}:${s.hero}`;
+  }
+  if (s.villain === null) invalid(s);
+  const villain = seatOf(s.villain);
+  if (s.kind === 'vsOpen') {
+    if (villain > SB || hero <= villain) invalid(s);
+    const group = hero === SB ? 'sb' : hero === BB ? 'bb' : 'ip';
+    return `vsOpen:${s.stack}:${s.villain}:${group}`;
+  }
+  if (hero > SB || villain <= hero) invalid(s);
+  const group = isBlind(s.villain) ? 'blinds' : 'ip';
+  return `vs3bet:${s.stack}:${s.hero}:${group}`;
+}
+
+export function validSituations(): PreflopSituation[] {
+  const out: PreflopSituation[] = [];
+  for (const stack of STACK_DEPTHS) {
+    for (let h = 0; h <= SB; h++) out.push({ kind: 'rfi', stack, hero: POSITIONS[h], villain: null });
+    for (let v = 0; v <= SB; v++) {
+      for (let h = v + 1; h <= BB; h++) out.push({ kind: 'vsOpen', stack, hero: POSITIONS[h], villain: POSITIONS[v] });
+    }
+    for (let h = 0; h <= SB; h++) {
+      for (let v = h + 1; v <= BB; v++) out.push({ kind: 'vs3bet', stack, hero: POSITIONS[h], villain: POSITIONS[v] });
+    }
+  }
+  return out;
+}
+
+export function expectedChartKeys(stack: StackDepth): ChartKey[] {
+  const keys = new Set(validSituations().filter((s) => s.stack === stack).map(chartKeyFor));
+  return [...keys].sort();
+}
+
+const openSize = (opener: Position) => (opener === 'SB' ? SB_OPEN_RAISE : OPEN_RAISE);
+const threeBetSize = (open: number, threeBettor: Position) =>
+  round1(open * (isBlind(threeBettor) ? THREE_BET_BLINDS : THREE_BET_IP));
+
+export function sizesFor(s: PreflopSituation): { facing: number | null; aggressiveTo: number } {
+  chartKeyFor(s);
+  if (s.kind === 'rfi') return { facing: null, aggressiveTo: openSize(s.hero) };
+  if (s.kind === 'vsOpen') {
+    const open = openSize(s.villain!);
+    return { facing: open, aggressiveTo: threeBetSize(open, s.hero) };
+  }
+  const threeBet = threeBetSize(openSize(s.hero), s.villain!);
+  return { facing: threeBet, aggressiveTo: s.stack === 40 ? 40 : round1(threeBet * FOUR_BET) };
+}

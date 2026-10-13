@@ -10,6 +10,7 @@ import {
   byPosition,
   byStackBucket,
   handErrorMatrix,
+  pushFoldRecords,
   weeklyTrend,
 } from '../../game/stats';
 import { localDateKey } from '../../game/streak';
@@ -61,7 +62,8 @@ function AccuracyTable({ title, rows }: { title: string; rows: Row[] }) {
 export function StatsScreen({ onBack }: { onBack: () => void }) {
   const game = useGame();
   const [kind, setKind] = useState<SpotKind>('open');
-  const records = game.save.decisions;
+  // Push/fold numbers only; starthand decisions get their own section (Task 7).
+  const records = pushFoldRecords(game.save.decisions);
 
   const header = (
     <div className="screen-header">

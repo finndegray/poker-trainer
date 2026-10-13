@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { PreflopRecord } from '../game/stats';
+import { TODAY_SAVE } from './test-saves';
 import { SaveFormatError, deserialize, emptyState, migrate, serialize, type SaveState } from './schema';
 
 const withDecision = (): SaveState => ({
@@ -167,5 +169,81 @@ describe('daily progress', () => {
     expect(() => migrate({ ...emptyState(), dailyProgress: { ...progress, index: 3, correct: 4 } })).toThrow(SaveFormatError);
     const allCorrect = { ...progress, index: 3, correct: 3 };
     expect(migrate({ ...emptyState(), dailyProgress: allCorrect }).dailyProgress).toEqual(allCorrect);
+  });
+});
+
+describe('starthand records (Plan 6)', () => {
+  const preflopRecord: PreflopRecord = {
+    ts: 3, dateKey: '2026-10-13', mode: 'training', game: 'preflop',
+    spot: { kind: 'vsOpen', stack: 100, hero: 'BTN', villain: 'CO', hand: 0 },
+    chosen: 'threeBet', verdict: 'correct', responseMs: 2500,
+  };
+  const today = () => JSON.parse(TODAY_SAVE);
+
+  it("loads a save in today's format unchanged, byte for byte", () => {
+    const loaded = deserialize(TODAY_SAVE);
+    expect(loaded).toEqual(JSON.parse(TODAY_SAVE));
+    expect(serialize(loaded)).toBe(TODAY_SAVE);
+    expect(loaded.schemaVersion).toBe(1);
+    expect(loaded.decisions.every((d) => d.game === undefined)).toBe(true);
+    expect('preflopFilter' in loaded.profile).toBe(false);
+  });
+
+  it('round-trips starthand records next to push/fold records and the remembered filter', () => {
+    const state: SaveState = {
+      ...emptyState(),
+      profile: { xp: 10, combo: 1, soundOn: true, preflopFilter: { kind: 'vs3bet', stack: 40 } },
+      decisions: [withDecision().decisions[0], preflopRecord],
+    };
+    expect(deserialize(serialize(state))).toEqual(state);
+  });
+
+  it('accepts push/fold records with an explicit game key', () => {
+    const raw = today();
+    raw.decisions[0] = { ...raw.decisions[0], game: 'pushfold' };
+    expect(migrate(raw).decisions[0]).toEqual(raw.decisions[0]);
+  });
+
+  it('drops invalid and unknown starthand records instead of failing', () => {
+    const raw = today();
+    const kept = raw.decisions.length;
+    const bad = [
+      { ...preflopRecord, spot: { ...preflopRecord.spot, hero: 'UTG' } },
+      { ...preflopRecord, spot: { kind: 'rfi', stack: 100, hero: 'BB', villain: null, hand: 0 } },
+      { ...preflopRecord, spot: { ...preflopRecord.spot, stack: 60 } },
+      { ...preflopRecord, spot: { ...preflopRecord.spot, hand: 169 } },
+      { ...preflopRecord, spot: null },
+      { ...preflopRecord, chosen: 'raise' },
+      { ...preflopRecord, verdict: 'super' },
+      { ...preflopRecord, responseMs: -1 },
+      { ...preflopRecord, game: 'icm' },
+    ];
+    raw.decisions = [...raw.decisions, preflopRecord, ...bad];
+    const loaded = migrate(raw);
+    expect(loaded.decisions).toHaveLength(kept + 1);
+    expect(loaded.decisions.at(-1)).toEqual(preflopRecord);
+  });
+
+  it('still rejects broken push/fold records', () => {
+    const raw = today();
+    raw.decisions.push({ ...raw.decisions[0], spot: { kind: 'open', position: 'BB', stack: 10, hand: 5 } });
+    expect(() => migrate(raw)).toThrow(SaveFormatError);
+    const explicit = today();
+    explicit.decisions.push({ ...explicit.decisions[0], game: 'pushfold', chosen: 'raise' });
+    expect(() => migrate(explicit)).toThrow(SaveFormatError);
+    const notAnObject = today();
+    notAnObject.decisions.push(7);
+    expect(() => migrate(notAnObject)).toThrow(SaveFormatError);
+  });
+
+  it('keeps a valid filter and ignores an invalid one', () => {
+    for (const preflopFilter of [{ kind: 'squeeze', stack: 'all' }, { kind: 'all', stack: 60 }, 'alle', null]) {
+      const raw = today();
+      raw.profile.preflopFilter = preflopFilter;
+      expect(migrate(raw).profile).toEqual({ xp: 1840, combo: 3, soundOn: false });
+    }
+    const raw = today();
+    raw.profile.preflopFilter = { kind: 'rfi', stack: 'all', extra: 1 };
+    expect(migrate(raw).profile).toEqual({ xp: 1840, combo: 3, soundOn: false, preflopFilter: { kind: 'rfi', stack: 'all' } });
   });
 });

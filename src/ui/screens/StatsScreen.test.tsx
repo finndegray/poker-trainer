@@ -3,7 +3,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { parseHand } from '../../engine/cards';
 import type { Spot, Verdict } from '../../engine/pushfold';
-import type { DecisionRecord } from '../../game/stats';
+import type { DecisionRecord, PreflopRecord } from '../../game/stats';
 import { emptyState, type SaveState } from '../../storage/schema';
 import { renderWithStore } from '../test-utils';
 import { StatsScreen } from './StatsScreen';
@@ -60,5 +60,19 @@ describe('StatsScreen', () => {
     expect(screen.getByText('12.10.: Platz 1.240')).toBeTruthy();
     const dailies = screen.getAllByText(/^1[0-9]\.10\.: \d+\/20$/).map((el) => el.textContent);
     expect(dailies).toEqual(['13.10.: 18/20', '12.10.: 15/20']);
+  });
+
+  it('counts only push/fold decisions in the push/fold numbers', () => {
+    const pre: PreflopRecord = {
+      ts: 99, dateKey: '2026-10-13', mode: 'training', game: 'preflop',
+      spot: { kind: 'rfi', stack: 100, hero: 'BTN', villain: null, hand: parseHand('A7o') },
+      chosen: 'raise', verdict: 'correct', responseMs: 1000,
+    };
+    const s = state();
+    renderWithStore(<StatsScreen onBack={() => {}} />, { initial: { ...s, decisions: [...s.decisions, pre, pre, pre] } });
+    const tiles = within(screen.getAllByText('Ø Antwortzeit')[0].closest('.stats-tiles') as HTMLElement);
+    expect(tiles.getByText('50 %')).toBeTruthy();
+    expect(tiles.getByText('4')).toBeTruthy();
+    expect(screen.getAllByTitle('A7o: 1 von 3 falsch')).toHaveLength(1);
   });
 });

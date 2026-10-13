@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { MAX_DECISIONS, SaveFormatError, emptyState, serialize, type SaveState } from './schema';
+import { TODAY_SAVE } from './test-saves';
 import {
   BACKUP_PREFIX, SAVE_KEY, deleteBackup, indexedDbBackend, listBackups, loadState, memoryBackend, readBackup, saveState,
   writeBackup, type KeyValueBackend,
@@ -128,5 +129,17 @@ describe('writeBackup', () => {
     expect(key).toBe(`${BACKUP_PREFIX}2026-10-13T12:00:00.000Z`);
     expect(await backend.get(key)).toBe('{"alt":true}');
     expect(await listBackups(backend)).toEqual([key]);
+  });
+});
+
+describe('saves from before the starthand training', () => {
+  it('load unchanged, stay writable and are written back byte for byte', async () => {
+    const backend = memoryBackend({ [SAVE_KEY]: TODAY_SAVE });
+    const loaded = await loadState(backend, now);
+    expect(loaded.corruptBackup).toBeNull();
+    expect(loaded.readOnly).toBe(false);
+    await saveState(backend, loaded.state);
+    expect(backend.dump()[SAVE_KEY]).toBe(TODAY_SAVE);
+    expect(await listBackups(backend)).toEqual([]);
   });
 });

@@ -15,14 +15,35 @@ const lockAvailable: LockLike = { request: (_n, _o, cb) => cb({}) };
 const lockTaken: LockLike = { request: (_n, _o, cb) => cb(null) };
 const withXp = (xp: number): SaveState => ({ ...emptyState(), profile: { xp, combo: 0, soundOn: true } });
 
+/** Minimal LockManager: one held lock per name, waiting requests are queued. */
+function fakeLockManager() {
+  let held = false;
+  const queue: Array<() => void> = [];
+  const run = (cb: (lock: unknown) => Promise<void>): Promise<void> => {
+    held = true;
+    return cb({}).finally(() => {
+      held = false;
+      queue.shift()?.();
+    });
+  };
+  const locks: LockLike = {
+    request: (_n, options, cb) => {
+      if (!held) return run(cb);
+      if (options.ifAvailable) return cb(null);
+      return new Promise<void>((resolve, reject) => queue.push(() => run(cb).then(resolve, reject)));
+    },
+  };
+  return { locks, isHeld: () => held };
+}
+
 describe('acquireWriterLock', () => {
   it('is granted without a lock API', async () => {
-    expect(await acquireWriterLock(undefined)).toBe(true);
+    expect((await acquireWriterLock(undefined)).granted).toBe(true);
   });
 
   it('reports whether the lock was available', async () => {
-    expect(await acquireWriterLock(lockAvailable)).toBe(true);
-    expect(await acquireWriterLock(lockTaken)).toBe(false);
+    expect((await acquireWriterLock(lockAvailable)).granted).toBe(true);
+    expect((await acquireWriterLock(lockTaken)).granted).toBe(false);
   });
 
   it('fails open when locks.request throws synchronously', async () => {
@@ -31,7 +52,22 @@ describe('acquireWriterLock', () => {
         throw new Error('kaputt');
       },
     };
-    expect(await acquireWriterLock(throwing)).toBe(true);
+    expect((await acquireWriterLock(throwing)).granted).toBe(true);
+  });
+
+  it('holds the lock until released', async () => {
+    const { locks, isHeld } = fakeLockManager();
+    const first = await acquireWriterLock(locks);
+    expect(first.granted).toBe(true);
+    const denied = await acquireWriterLock(locks);
+    expect(denied.granted).toBe(false);
+    denied.release();
+    expect(isHeld()).toBe(true);
+    first.release();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(isHeld()).toBe(false);
+    expect((await acquireWriterLock(locks)).granted).toBe(true);
   });
 });
 
@@ -211,6 +247,29 @@ describe('writer lock hand-over', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it('calls a listener subscribed after the hand-over immediately with the fresh state', async () => {
+    const backend = memoryBackend({ [SAVE_KEY]: serialize(withXp(10)) });
+    const { locks, grant } = waitingLock();
+    const p = await openPersistence(env({ createBackend: () => backend, locks }));
+    await backend.set(SAVE_KEY, serialize(withXp(42)));
+    await new Promise<void>((resolve) => {
+      p.onWriterAcquired(() => resolve());
+      grant();
+    });
+    const late = vi.fn();
+    p.onWriterAcquired(late);
+    expect(late).toHaveBeenCalledOnce();
+    expect(late.mock.calls[0][0].profile.xp).toBe(42);
+  });
+
+  it('does not call a late listener before any hand-over', async () => {
+    const { locks } = waitingLock();
+    const p = await openPersistence(env({ locks }));
+    const listener = vi.fn();
+    p.onWriterAcquired(listener);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('does not queue a waiting request when the lock was free', async () => {
     const request = vi.fn<LockLike['request']>((_n, _o, cb) => cb({}));
     await openPersistence(env({ locks: { request } }));
@@ -231,5 +290,18 @@ describe('load timeout', () => {
     expect(p.initial).toEqual(emptyState());
     p.save(withXp(2));
     await p.flush();
+  });
+
+  it('releases the writer lock when falling back to memory', async () => {
+    const hanging: KeyValueBackend = {
+      get: () => new Promise(() => {}),
+      set: () => new Promise(() => {}),
+      keys: () => new Promise(() => {}),
+      del: () => new Promise(() => {}),
+    };
+    const { locks } = fakeLockManager();
+    const p = await openPersistence(env({ createBackend: () => hanging, locks, loadTimeoutMs: 20 }));
+    expect(p.info.mode).toBe('memory');
+    expect((await acquireWriterLock(locks)).granted).toBe(true);
   });
 });

@@ -34,23 +34,27 @@ export type PersistenceEnv = {
 
 const DEFAULT_LOAD_TIMEOUT_MS = 5000;
 
-export function acquireWriterLock(locks?: LockLike): Promise<boolean> {
-  if (!locks) return Promise.resolve(true);
-  return new Promise<boolean>((resolve) => {
+export type WriterLock = { granted: boolean; release(): void };
+
+const noLock = (granted: boolean): WriterLock => ({ granted, release: () => {} });
+
+/** Without a working lock API the tab may write (fail open); the lock is held until `release()`. */
+export function acquireWriterLock(locks?: LockLike): Promise<WriterLock> {
+  if (!locks) return Promise.resolve(noLock(true));
+  return new Promise<WriterLock>((resolve) => {
     try {
       locks
         .request(WRITER_LOCK, { ifAvailable: true }, (lock) => {
           if (!lock) {
-            resolve(false);
+            resolve(noLock(false));
             return Promise.resolve();
           }
-          resolve(true);
-          // Keep the lock until the tab closes.
-          return new Promise<void>(() => {});
+          // Keep the lock until released (normally: until the tab closes).
+          return new Promise<void>((release) => resolve({ granted: true, release: () => release() }));
         })
-        .catch(() => resolve(true));
+        .catch(() => resolve(noLock(true)));
     } catch {
-      resolve(true);
+      resolve(noLock(true));
     }
   });
 }
@@ -72,13 +76,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 async function openBackend(env: PersistenceEnv): Promise<{ backend: KeyValueBackend; mode: StorageMode; loaded: LoadResult; hasLock: boolean }> {
+  let lock: WriterLock | null = null;
   try {
     const backend = env.createBackend();
     // Lock first, so we never work on a state loaded while another tab was still writing.
-    const hasLock = await acquireWriterLock(env.locks);
+    lock = await acquireWriterLock(env.locks);
     const loaded = await withTimeout(loadState(backend, env.now()), env.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS);
-    return { backend, mode: 'indexeddb', loaded, hasLock };
+    return { backend, mode: 'indexeddb', loaded, hasLock: lock.granted };
   } catch {
+    // A memory-only tab never writes the shared state, so another tab may become the writer.
+    lock?.release();
     const backend = memoryBackend();
     return { backend, mode: 'memory', loaded: await loadState(backend, env.now()), hasLock: true };
   }
@@ -93,8 +100,14 @@ export async function openPersistence(env: PersistenceEnv): Promise<Persistence>
   let writable = !loaded.readOnly && hasLock;
   const queue = new SaveQueue<SaveState>((state) => saveState(backend, state, { readOnly: !writable }), env.onSaveError);
   const writerListeners = new Set<(fresh: SaveState) => void>();
+  let acquiredState: SaveState | null = null;
 
-  if (!hasLock && env.locks) waitForWriterLock(env, backend, writerListeners, () => (writable = true));
+  if (!hasLock && env.locks)
+    waitForWriterLock(env, backend, (fresh) => {
+      writable = true;
+      acquiredState = fresh;
+      for (const listener of [...writerListeners]) listener(fresh);
+    });
 
   return {
     initial: loaded.state,
@@ -104,6 +117,8 @@ export async function openPersistence(env: PersistenceEnv): Promise<Persistence>
     },
     flush: () => queue.flush(),
     onWriterAcquired(listener) {
+      // A listener that subscribes after the hand-over still learns about it.
+      if (acquiredState) listener(acquiredState);
       writerListeners.add(listener);
       return () => {
         writerListeners.delete(listener);
@@ -116,8 +131,7 @@ export async function openPersistence(env: PersistenceEnv): Promise<Persistence>
 function waitForWriterLock(
   env: PersistenceEnv,
   backend: KeyValueBackend,
-  listeners: Set<(fresh: SaveState) => void>,
-  becomeWritable: () => void,
+  onAcquired: (fresh: SaveState) => void,
 ): void {
   const onGranted = async (lock: unknown): Promise<void> => {
     if (!lock) return;
@@ -126,8 +140,7 @@ function waitForWriterLock(
       const fresh = await loadState(backend, env.now());
       // A save from a newer app version stays untouched; this tab keeps not writing.
       if (fresh.readOnly) return;
-      becomeWritable();
-      for (const listener of [...listeners]) listener(fresh.state);
+      onAcquired(fresh.state);
     } catch (error) {
       env.onSaveError(error);
       return;

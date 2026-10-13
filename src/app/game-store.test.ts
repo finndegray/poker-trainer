@@ -108,6 +108,7 @@ describe('adoptSavedState', () => {
     expect(s.current).toBeNull();
     expect(s.last).toBeNull();
     expect(s.notice).toBe('writer-acquired');
+    expect(s.celebration).toBeNull();
     store.dismissNotice();
     expect(store.getSnapshot().notice).toBeNull();
   });
@@ -205,6 +206,37 @@ describe('daily challenge', () => {
     expect(store.getSnapshot().session).toMatchObject({ outcome: { accepted: false } });
   });
 
+  it('records the daily as soon as the last spot is answered', () => {
+    const { store, data, advance } = setup();
+    store.startDaily();
+    for (let i = 0; i < 20; i++) {
+      store.answer(rightAction(data, store.getSnapshot().current!.spot));
+      advance(1000);
+      if (i < 19) store.next();
+    }
+    const done = store.getSnapshot();
+    const outcome = (done.session as { outcome: { result: { durationMs: number } } | null }).outcome;
+    expect(outcome).not.toBeNull();
+    expect(outcome!.result.durationMs).toBeGreaterThan(0);
+    expect(done.save.daily['2026-10-13']).toEqual(outcome!.result);
+    expect(done.last).not.toBeNull();
+    store.next();
+    const after = store.getSnapshot();
+    expect(after.current).toBeNull();
+    expect(after.last).toBeNull();
+    expect(after.session).toBe(done.session);
+    expect(after.save).toBe(done.save);
+  });
+
+  it('ignores next() while the current daily spot is unanswered', () => {
+    const { store } = setup();
+    store.startDaily();
+    const before = store.getSnapshot().current;
+    store.next();
+    expect(store.getSnapshot().current).toBe(before);
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 0 });
+  });
+
   it('resumes an unfinished daily instead of restarting it', () => {
     const { store, advance } = setup();
     store.startDaily();
@@ -236,6 +268,15 @@ describe('endphase run', () => {
     expect(snap.save.activeRun).toBeNull();
     expect(snap.save.bestRun?.placement).toBe(summary.placement);
     expect(snap.current).toBeNull();
+  });
+
+  it('ignores next() while the current run spot is unanswered', () => {
+    const { store } = setup();
+    store.startRun();
+    const before = store.getSnapshot();
+    store.next();
+    expect(store.getSnapshot().current).toBe(before.current);
+    expect(store.getSnapshot().save.activeRun).toBe(before.save.activeRun);
   });
 
   it('continues a saved run after a reload', () => {
@@ -272,6 +313,37 @@ describe('celebration, export and import', () => {
     expect(store.getSnapshot().celebration).toBe('Donkey');
     store.dismissCelebration();
     expect(store.getSnapshot().celebration).toBeNull();
+  });
+
+  it('celebrates a rank-up caused by the run bonus xp', () => {
+    const run = { ...startRun(), levelIndex: 7, spotInLevel: 4, lives: 1, answered: 39 };
+    const initial: SaveState = { ...emptyState(), profile: { xp: 1890, combo: 0, soundOn: true }, activeRun: run };
+    const { store, data } = setup({}, initial);
+    store.startRun();
+    store.answer(rightAction(data, store.getSnapshot().current!.spot));
+    const snap = store.getSnapshot();
+    expect(snap.session).toMatchObject({ kind: 'run', outcome: { summary: { finalTable: true } } });
+    expect(snap.celebration).toBe('Grinder');
+  });
+
+  it('resets the celebration on import', async () => {
+    const initial: SaveState = { ...emptyState(), profile: { xp: 495, combo: 0, soundOn: true } };
+    const { store, data } = setup({}, initial);
+    store.startTraining();
+    store.answer(rightAction(data, store.getSnapshot().current!.spot));
+    expect(store.getSnapshot().celebration).toBe('Donkey');
+    await store.importState(serialize(emptyState()));
+    expect(store.getSnapshot().celebration).toBeNull();
+  });
+
+  it('aborts the import when the backup fails', async () => {
+    const { store, save, create } = setup();
+    const failure = new Error('Backup voll');
+    create.mockRejectedValueOnce(failure);
+    const before = store.getSnapshot();
+    await expect(store.importState(serialize({ ...emptyState(), profile: { xp: 900, combo: 0, soundOn: true } }))).rejects.toBe(failure);
+    expect(store.getSnapshot()).toBe(before);
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('backs up the current state before importing', async () => {

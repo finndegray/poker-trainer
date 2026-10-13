@@ -151,7 +151,19 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
       let session = snapshot.session;
       let celebration = outcome.rank.rankUp ? outcome.rank.after : snapshot.celebration;
       if (session.kind === 'daily') {
-        session = { ...session, correct: session.correct + (outcome.grade.verdict === 'wrong' ? 0 : 1) };
+        const correct = session.correct + (outcome.grade.verdict === 'wrong' ? 0 : 1);
+        session = { ...session, correct };
+        if (session.index === session.spots.length - 1) {
+          const result: DailyResult = {
+            dateKey: session.dateKey,
+            correct,
+            total: session.spots.length,
+            durationMs: Math.max(0, Math.round(clock() - session.startedAt)),
+          };
+          const recorded = recordDaily(save, result);
+          save = recorded.state;
+          session = { ...session, outcome: { result, accepted: recorded.accepted, isPersonalBest: recorded.isPersonalBest } };
+        }
       } else if (session.kind === 'run') {
         save = answerActiveRun(save, outcome.grade.verdict);
         const run = save.activeRun;
@@ -187,6 +199,7 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
         current: null,
         last: null,
         session: { kind: 'training' },
+        celebration: null,
         notice: 'writer-acquired',
       });
     },
@@ -247,26 +260,16 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
         return;
       }
       if (s.kind === 'daily') {
-        if (s.outcome) return;
-        const index = s.index + 1;
-        if (index < s.spots.length) {
-          update({ session: { ...s, index }, current: deal(s.spots[index]), last: null });
+        if (snapshot.current && !snapshot.last) return;
+        if (s.outcome) {
+          update({ current: null, last: null });
           return;
         }
-        const result: DailyResult = {
-          dateKey: s.dateKey,
-          correct: s.correct,
-          total: s.spots.length,
-          durationMs: Math.max(0, Math.round(clock() - s.startedAt)),
-        };
-        const recorded = recordDaily(snapshot.save, result);
-        commit(recorded.state, {
-          session: { ...s, outcome: { result, accepted: recorded.accepted, isPersonalBest: recorded.isPersonalBest } },
-          current: null,
-          last: null,
-        });
+        const index = s.index + 1;
+        update({ session: { ...s, index }, current: deal(s.spots[index]), last: null });
         return;
       }
+      if (snapshot.current && !snapshot.last) return;
       if (s.outcome) {
         update({ current: null, last: null });
         return;
@@ -284,7 +287,7 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
     async importState(text) {
       const imported = deserialize(text);
       await persistence.backups.create(serialize(snapshot.save));
-      commit(imported, { session: { kind: 'training' }, current: null, last: null });
+      commit(imported, { session: { kind: 'training' }, current: null, last: null, celebration: null });
     },
   };
   return store;

@@ -65,7 +65,9 @@ async function bootstrap(): Promise<void> {
   if (updateNotice) ready.setUpdateAvailable();
   opened.onWriterAcquired((fresh) => ready.adoptSavedState(fresh));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') ready.refreshStatus();
+    const visible = document.visibilityState === 'visible';
+    ready.onVisibilityChange(visible);
+    if (visible) ready.refreshStatus();
     // Apply a waiting update while nobody is looking, so it never interrupts training.
     else policy.onHidden().catch(logError);
   });

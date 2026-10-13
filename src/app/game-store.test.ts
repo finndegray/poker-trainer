@@ -6,7 +6,7 @@ import { aggressiveAction, evOf, type Action, type Spot } from '../engine/pushfo
 import type { PushFoldData } from '../engine/pushfold-data';
 import { dailySpots } from '../game/daily';
 import { RUN_LEVEL_STACKS, startRun } from '../game/endphase-run';
-import { emptyState, SaveFormatError, serialize, type SaveState } from '../storage/schema';
+import { deserialize, emptyState, SaveFormatError, serialize, type SaveState } from '../storage/schema';
 import { createGameStore, type GameStoreDeps } from './game-store';
 import type { PersistenceInfo } from './persistence';
 
@@ -377,5 +377,122 @@ describe('getBackups', () => {
     const { store, create } = setup();
     await store.getBackups().create('{}');
     expect(create).toHaveBeenCalledWith('{}');
+  });
+});
+
+describe('daily progress across reloads', () => {
+  /** The state a reload would read back: the last saved state, through the storage format. */
+  const reloaded = (save: ReturnType<typeof vi.fn>): SaveState => deserialize(serialize(save.mock.lastCall![0] as SaveState));
+
+  function playSeven() {
+    const first = setup();
+    const { store, data, advance } = first;
+    store.startDaily();
+    let correct = 0;
+    for (let i = 0; i < 7; i++) {
+      const spot = store.getSnapshot().current!.spot;
+      const action = i % 2 === 0 ? rightAction(data, spot) : wrongAction(data, spot);
+      advance(1000);
+      if (store.answer(action).outcome.grade.verdict !== 'wrong') correct++;
+      store.next();
+    }
+    return { ...first, correct };
+  }
+
+  it('saves the progress with every daily answer', () => {
+    const { store, save, correct } = playSeven();
+    expect(store.getSnapshot().save.dailyProgress).toEqual({ dateKey: '2026-10-13', index: 7, correct, elapsedMs: 7000 });
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ dailyProgress: { dateKey: '2026-10-13', index: 7, correct, elapsedMs: 7000 } }));
+  });
+
+  it('resumes the daily in a new store after a reload and records it once', () => {
+    const { save, data, correct } = playSeven();
+    const { store, advance, save: save2 } = setup({}, reloaded(save));
+    const expected = dailySpots(data, '2026-10-13');
+    store.startDaily();
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 7, correct });
+    expect(store.getSnapshot().current?.spot).toEqual(expected[7]);
+    for (let i = 7; i < 20; i++) {
+      expect(store.getSnapshot().current?.spot).toEqual(expected[i]);
+      advance(1000);
+      store.answer('fold');
+      store.next();
+    }
+    const snap = store.getSnapshot();
+    expect(snap.session).toMatchObject({ kind: 'daily', outcome: { accepted: true, result: { total: 20, durationMs: 20_000 } } });
+    expect(snap.save.daily['2026-10-13']).toBeDefined();
+    expect(snap.save.dailyProgress).toBeNull();
+    expect(save2).toHaveBeenLastCalledWith(expect.objectContaining({ dailyProgress: null }));
+    // Only one save recorded the daily, and in the same commit the progress was cleared.
+    const withDaily = save2.mock.calls.filter(([s]) => (s as SaveState).daily['2026-10-13']);
+    expect(withDaily).toHaveLength(1);
+    expect((withDaily[0][0] as SaveState).dailyProgress).toBeNull();
+  });
+
+  it('resumes the saved progress after switching to training and back', () => {
+    const { save, correct } = playSeven();
+    const { store, data } = setup({}, reloaded(save));
+    store.startTraining();
+    store.answer(rightAction(data, store.getSnapshot().current!.spot));
+    store.startDaily();
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 7, correct });
+    expect(store.getSnapshot().current?.spot).toEqual(dailySpots(data, '2026-10-13')[7]);
+  });
+
+  it('starts over and clears the progress on restart', () => {
+    const { save } = playSeven();
+    const { store, save: save2 } = setup({}, reloaded(save));
+    store.startDaily({ restart: true });
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 0, correct: 0 });
+    expect(store.getSnapshot().save.dailyProgress).toBeNull();
+    expect(save2).toHaveBeenLastCalledWith(expect.objectContaining({ dailyProgress: null }));
+  });
+
+  it('ignores and clears progress from an older day', () => {
+    const initial: SaveState = { ...emptyState(), dailyProgress: { dateKey: '2026-10-12', index: 9, correct: 6, elapsedMs: 30_000 } };
+    const { store, save, data } = setup({}, initial);
+    store.startDaily();
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', dateKey: '2026-10-13', index: 0, correct: 0, startedAt: 1000 });
+    expect(store.getSnapshot().current?.spot).toEqual(dailySpots(data, '2026-10-13')[0]);
+    expect(store.getSnapshot().save.dailyProgress).toBeNull();
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ dailyProgress: null }));
+  });
+});
+
+describe('timers while the app is hidden', () => {
+  it('does not count hidden time for the current spot', () => {
+    const { store, advance } = setup();
+    store.startTraining();
+    advance(500);
+    store.onVisibilityChange(false);
+    advance(60_000);
+    store.onVisibilityChange(true);
+    advance(700);
+    expect(store.answer('fold').outcome.record.responseMs).toBe(1200);
+  });
+
+  it('does not count hidden time for the daily duration', () => {
+    const { store, advance } = setup();
+    store.startDaily();
+    for (let i = 0; i < 20; i++) {
+      advance(1000);
+      if (i === 10) {
+        store.onVisibilityChange(false);
+        advance(300_000);
+        store.onVisibilityChange(true);
+      }
+      store.answer('fold');
+      store.next();
+    }
+    expect(store.getSnapshot().session).toMatchObject({ outcome: { result: { durationMs: 20_000 } } });
+  });
+
+  it('ignores a visible event without a hidden one before', () => {
+    const { store, advance } = setup();
+    store.startTraining();
+    const before = store.getSnapshot();
+    advance(100);
+    store.onVisibilityChange(true);
+    expect(store.getSnapshot()).toBe(before);
   });
 });

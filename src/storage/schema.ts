@@ -1,7 +1,7 @@
 import { HAND_COUNT } from '../engine/cards';
 import { OPEN_POSITIONS, type Position, callerPositions } from '../engine/positions';
 import { MAX_STACK, MIN_STACK } from '../engine/pushfold-data';
-import type { DailyResult } from '../game/daily';
+import { DAILY_SPOT_COUNT, type DailyResult } from '../game/daily';
 import type { RunState } from '../game/endphase-run';
 import type { DecisionRecord } from '../game/stats';
 
@@ -18,6 +18,8 @@ export type RunSummary = {
   bonusXp: number;
 };
 export type Profile = { xp: number; combo: number; soundOn: boolean };
+/** An unfinished daily challenge: `index` is the next spot to play (= spots answered so far). */
+export type DailyProgress = { dateKey: string; index: number; correct: number; elapsedMs: number };
 export type SaveState = {
   schemaVersion: 1;
   profile: Profile;
@@ -27,6 +29,8 @@ export type SaveState = {
   runs: RunSummary[];
   bestRun: RunSummary | null;
   activeRun: RunState | null;
+  /** Added after the first release; saves without the key load as `null`. */
+  dailyProgress: DailyProgress | null;
 };
 
 export type SaveFormatErrorCode = 'corrupt' | 'newer-version';
@@ -51,6 +55,7 @@ export function emptyState(): SaveState {
     runs: [],
     bestRun: null,
     activeRun: null,
+    dailyProgress: null,
   };
 }
 
@@ -101,6 +106,14 @@ function isActiveRun(v: unknown): boolean {
     && isIntIn(v.answered, 0, Number.MAX_SAFE_INTEGER);
 }
 
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const isInt = (v: unknown): v is number => isIntIn(v, 0, Number.MAX_SAFE_INTEGER);
+
+function isDailyProgress(v: unknown): boolean {
+  return isObject(v) && isString(v.dateKey) && DATE_KEY.test(v.dateKey) && isIntIn(v.index, 0, DAILY_SPOT_COUNT - 1)
+    && isInt(v.correct) && isInt(v.elapsedMs);
+}
+
 function fail(reason: string, code: SaveFormatErrorCode = 'corrupt'): never {
   throw new SaveFormatError(`Spielstand nicht lesbar: ${reason}`, code);
 }
@@ -121,6 +134,9 @@ export function migrate(raw: unknown): SaveState {
   if (!Array.isArray(raw.runs) || !raw.runs.every(isRun)) fail('Runs ungültig');
   if (raw.bestRun !== null && !isRun(raw.bestRun)) fail('Bester Run ungültig');
   if (raw.activeRun !== null && !isActiveRun(raw.activeRun)) fail('Laufender Run ungültig');
+  // Additive field: saves written before it existed have no key at all.
+  const progress = 'dailyProgress' in raw ? raw.dailyProgress : null;
+  if (progress !== null && !isDailyProgress(progress)) fail('Daily-Fortschritt ungültig');
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -131,6 +147,7 @@ export function migrate(raw: unknown): SaveState {
     runs: [...(raw.runs as RunSummary[])],
     bestRun: raw.bestRun as RunSummary | null,
     activeRun: raw.activeRun === null ? null : { ...(raw.activeRun as RunState) },
+    dailyProgress: progress === null ? null : { ...(progress as DailyProgress) },
   };
 }
 

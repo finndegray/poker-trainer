@@ -82,6 +82,8 @@ export type GameStore = {
   /** Validates, backs up the current state, then replaces it. */
   importState(text: string): Promise<void>;
   getBackups(): BackupApi;
+  /** Time while the app is hidden does not count for the current spot or the daily duration. */
+  onVisibilityChange(visible: boolean): void;
 };
 
 export function createGameStore(deps: GameStoreDeps): GameStore {
@@ -99,6 +101,7 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
   };
   // Remembered separately, so the update notice comes back after the writer notice is dismissed.
   let updateAvailable = false;
+  let hiddenSince: number | null = null;
   const listeners = new Set<() => void>();
 
   const update = (patch: Partial<GameSnapshot>) => {
@@ -153,17 +156,15 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
       let celebration = outcome.rank.rankUp ? outcome.rank.after : snapshot.celebration;
       if (session.kind === 'daily') {
         const correct = session.correct + (outcome.grade.verdict === 'wrong' ? 0 : 1);
+        const elapsedMs = Math.max(0, Math.round(clock() - session.startedAt));
         session = { ...session, correct };
         if (session.index === session.spots.length - 1) {
-          const result: DailyResult = {
-            dateKey: session.dateKey,
-            correct,
-            total: session.spots.length,
-            durationMs: Math.max(0, Math.round(clock() - session.startedAt)),
-          };
+          const result: DailyResult = { dateKey: session.dateKey, correct, total: session.spots.length, durationMs: elapsedMs };
           const recorded = recordDaily(save, result);
-          save = recorded.state;
+          save = { ...recorded.state, dailyProgress: null };
           session = { ...session, outcome: { result, accepted: recorded.accepted, isPersonalBest: recorded.isPersonalBest } };
+        } else {
+          save = { ...save, dailyProgress: { dateKey: session.dateKey, index: session.index + 1, correct, elapsedMs } };
         }
       } else if (session.kind === 'run') {
         save = answerActiveRun(save, outcome.grade.verdict);
@@ -225,11 +226,21 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
         return;
       }
       const spots = dailySpots(data, dateKey);
-      update({
-        session: { kind: 'daily', dateKey, spots, index: 0, correct: 0, startedAt: clock(), outcome: null },
-        current: deal(spots[0]),
-        last: null,
-      });
+      const saved = snapshot.save.dailyProgress;
+      if (!options.restart && saved !== null && saved.dateKey === dateKey) {
+        // Resume the daily that a reload or a mode switch interrupted.
+        update({
+          session: { kind: 'daily', dateKey, spots, index: saved.index, correct: saved.correct, startedAt: clock() - saved.elapsedMs, outcome: null },
+          current: deal(spots[saved.index]),
+          last: null,
+        });
+        return;
+      }
+      const session: Session = { kind: 'daily', dateKey, spots, index: 0, correct: 0, startedAt: clock(), outcome: null };
+      const patch: Partial<GameSnapshot> = { session, current: deal(spots[0]), last: null };
+      // A restart or a new day drops the stored progress.
+      if (saved !== null) commit({ ...snapshot.save, dailyProgress: null }, patch);
+      else update(patch);
     },
     startRun(options = {}) {
       assertPlayable();
@@ -292,6 +303,20 @@ export function createGameStore(deps: GameStoreDeps): GameStore {
     },
     getBackups() {
       return persistence.backups;
+    },
+    onVisibilityChange(visible) {
+      if (!visible) {
+        hiddenSince ??= clock();
+        return;
+      }
+      if (hiddenSince === null) return;
+      const hidden = clock() - hiddenSince;
+      hiddenSince = null;
+      const patch: Partial<GameSnapshot> = {};
+      if (snapshot.current && !snapshot.last) patch.current = { ...snapshot.current, shownAt: snapshot.current.shownAt + hidden };
+      const s = snapshot.session;
+      if (s.kind === 'daily' && !s.outcome) patch.session = { ...s, startedAt: s.startedAt + hidden };
+      if (patch.current || patch.session) update(patch);
     },
   };
   return store;

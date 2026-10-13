@@ -84,7 +84,65 @@ describe('syncRetraining', () => {
   });
 });
 
+describe('syncRetraining details', () => {
+  const deepFreeze = <T>(o: T): T => {
+    if (o && typeof o === 'object' && !Object.isFrozen(o)) {
+      Object.freeze(o);
+      Object.values(o).forEach(deepFreeze);
+    }
+    return o;
+  };
+
+  it('returns the same object when nothing changes, a new one when something does', () => {
+    const s = syncRetraining(emptyState(), 'T1', [a, b]);
+    expect(syncRetraining(s, 'T1', [a, b])).toBe(s);
+    expect(syncRetraining(s, 'T1', [b, a])).toBe(s);
+    expect(syncRetraining(s, 'T1', [a])).not.toBe(s);
+    expect(syncRetraining(s, 'T1', [a, { ...b, playedAt: '2026-10-12 17:00:00' }])).not.toBe(s);
+    expect(syncRetraining(s, 'T2', [])).not.toBe(s);
+  });
+
+  it('keeps the off switch', () => {
+    const s = setRetrainingOn(syncRetraining(emptyState(), 'T1', [a]), false);
+    const next = syncRetraining(s, 'T2', [c]);
+    expect(retrainingOf(next).off).toBe(true);
+    expect(keys(next)).toEqual(['TM3:9', 'TM1:13']);
+    expect(retrainingOn(next)).toBe(false);
+  });
+
+  it('does not queue a key that is already queued under another tournament', () => {
+    let s = syncRetraining(emptyState(), 'T1', [a]);
+    s = syncRetraining(s, 'T2', [a, c]);
+    expect(keys(s)).toEqual(['TM3:9', 'TM1:13']);
+    expect(retrainingOf(s).entries.find((e) => e.key === a.key)?.tournamentId).toBe('T1');
+  });
+
+  it('does not mutate its inputs', () => {
+    const s = deepFreeze(syncRetraining(emptyState(), 'T1', [a, b]));
+    const cands = deepFreeze([c, { ...a }]);
+    expect(() => syncRetraining(s, 'T2', cands)).not.toThrow();
+    expect(() => syncRetraining(s, 'T1', [])).not.toThrow();
+    expect(() => answerRetraining(s, a.key, 'correct')).not.toThrow();
+    expect(() => forgetRetraining(s, 'T1')).not.toThrow();
+    expect(() => setRetrainingOn(s, false)).not.toThrow();
+  });
+
+  it('never exposes a mutable shared empty state', () => {
+    const e = retrainingOf(emptyState());
+    expect(Object.isFrozen(e)).toBe(true);
+    expect(Object.isFrozen(e.entries)).toBe(true);
+    expect(Object.isFrozen(e.done)).toBe(true);
+    expect(Object.isFrozen(e.synced)).toBe(true);
+  });
+});
+
 describe('forgetRetraining', () => {
+  it('keeps the off switch', () => {
+    let s = setRetrainingOn(syncRetraining(emptyState(), 'T1', [a]), false);
+    s = forgetRetraining(s, 'T1');
+    expect(retrainingOf(s)).toMatchObject({ off: true, entries: [], synced: [] });
+  });
+
   it('removes the spots of a deleted tournament but keeps done keys', () => {
     let s = syncRetraining(emptyState(), 'T1', [a, b]);
     s = syncRetraining(s, 'T2', [c]);

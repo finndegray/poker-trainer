@@ -50,13 +50,29 @@ const cmp = (x: string, y: string): number => (x < y ? -1 : x > y ? 1 : 0);
 export const byPlayedAt = (a: { playedAt: string; key: string }, b: { playedAt: string; key: string }): number =>
   cmp(a.playedAt, b.playedAt) || cmp(a.key, b.key);
 
-const EMPTY: RetrainingState = { entries: [], done: [], synced: [] };
+const EMPTY: RetrainingState = Object.freeze({
+  entries: Object.freeze([]) as unknown as RetrainingEntry[],
+  done: Object.freeze([]) as unknown as string[],
+  synced: Object.freeze([]) as unknown as string[],
+});
 
 const spotId = (r: RetrainingSpot): string => JSON.stringify(copyRetrainingSpot(r));
 
 export const retrainingOf = (state: SaveState): RetrainingState => state.retraining ?? EMPTY;
 export const retrainingOn = (state: SaveState): boolean => state.retraining?.off !== true;
 export const retrainingCount = (state: SaveState): number => retrainingOf(state).entries.length;
+
+const sameList = <T>(x: readonly T[], y: readonly T[], eq: (p: T, q: T) => boolean): boolean =>
+  x.length === y.length && x.every((v, i) => eq(v, y[i]));
+
+const sameEntry = (x: RetrainingEntry, y: RetrainingEntry): boolean =>
+  x.key === y.key && x.tournamentId === y.tournamentId && x.playedAt === y.playedAt && x.streak === y.streak && spotId(x) === spotId(y);
+
+const sameRetraining = (x: RetrainingState, y: RetrainingState): boolean =>
+  (x.off === true) === (y.off === true) &&
+  sameList(x.entries, y.entries, sameEntry) &&
+  sameList(x.done, y.done, (p, q) => p === q) &&
+  sameList(x.synced, y.synced, (p, q) => p === q);
 
 /** Sorts by hand time and applies the cap; dropped keys count as done. */
 function withEntries(state: SaveState, base: RetrainingState, entries: RetrainingEntry[], synced: string[]): SaveState {
@@ -90,7 +106,8 @@ export function syncRetraining(state: SaveState, tournamentId: string, candidate
     fresh.push({ key: c.key, tournamentId, playedAt: c.playedAt, streak, ...copyRetrainingSpot(c) });
   }
   const synced = base.synced.includes(tournamentId) ? base.synced : [...base.synced, tournamentId];
-  return withEntries(state, base, [...others, ...fresh], synced);
+  const next = withEntries(state, base, [...others, ...fresh], synced);
+  return state.retraining !== undefined && next.retraining && sameRetraining(state.retraining, next.retraining) ? state : next;
 }
 
 /** A deleted tournament takes its queued spots with it; done keys stay, so a re-import does not bring cleared spots back. */

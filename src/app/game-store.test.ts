@@ -2,24 +2,37 @@ import { describe, expect, it, vi } from 'vitest';
 import { handClassOf } from '../engine/cards';
 import { mulberry32 } from '../engine/rng';
 import { makeFixture } from '../engine/test-fixtures';
-import { emptyState } from '../storage/schema';
+import { aggressiveAction, evOf, type Action, type Spot } from '../engine/pushfold';
+import type { PushFoldData } from '../engine/pushfold-data';
+import { dailySpots } from '../game/daily';
+import { RUN_LEVEL_STACKS, startRun } from '../game/endphase-run';
+import { emptyState, SaveFormatError, serialize, type SaveState } from '../storage/schema';
 import { createGameStore, type GameStoreDeps } from './game-store';
 import type { PersistenceInfo } from './persistence';
 
 const info: PersistenceInfo = { mode: 'memory', readOnly: false, otherTabActive: false, corruptBackup: null };
 
-function setup(over: Partial<PersistenceInfo> = {}) {
+function setup(over: Partial<PersistenceInfo> = {}, initial: SaveState = emptyState()) {
   let t = 1000;
   const save = vi.fn();
+  const create = vi.fn(async () => 'corrupt-backup:test');
   const deps: GameStoreDeps = {
     data: makeFixture((h) => (84 - h) / 10),
-    persistence: { initial: emptyState(), info: { ...info, ...over }, save },
+    persistence: {
+      initial,
+      info: { ...info, ...over },
+      save,
+      backups: { list: async () => [], read: async () => undefined, remove: async () => {}, create },
+    },
     rng: mulberry32(1),
     now: () => new Date(2026, 9, 13, 18, 0),
     clock: () => t,
   };
-  return { store: createGameStore(deps), save, advance: (ms: number) => (t += ms) };
+  return { store: createGameStore(deps), save, create, data: deps.data, advance: (ms: number) => (t += ms) };
 }
+
+const rightAction = (data: PushFoldData, spot: Spot): Action => (evOf(data, spot) > 0 ? aggressiveAction(spot) : 'fold');
+const wrongAction = (data: PushFoldData, spot: Spot): Action => (evOf(data, spot) > 0 ? 'fold' : aggressiveAction(spot));
 
 describe('createGameStore', () => {
   it('starts with the saved state and no spot', () => {
@@ -155,5 +168,134 @@ describe('resumeTraining', () => {
     store.resumeTraining();
     expect(store.getSnapshot().last).toBeNull();
     expect(store.getSnapshot().current?.shownAt).toBe(1010);
+  });
+});
+
+describe('daily challenge', () => {
+  it('plays the 20 spots of the day and records the result once', () => {
+    const { store, data, advance } = setup();
+    store.startDaily();
+    const expected = dailySpots(data, '2026-10-13');
+    for (let i = 0; i < 20; i++) {
+      const snap = store.getSnapshot();
+      expect(snap.session).toMatchObject({ kind: 'daily', index: i });
+      expect(snap.current?.spot).toEqual(expected[i]);
+      store.answer(i < 15 ? rightAction(data, snap.current!.spot) : wrongAction(data, snap.current!.spot));
+      expect(store.getSnapshot().last?.outcome.record.mode).toBe('daily');
+      advance(1000);
+      store.next();
+    }
+    const snap = store.getSnapshot();
+    expect(snap.current).toBeNull();
+    expect(snap.session).toMatchObject({ kind: 'daily', outcome: { accepted: true, isPersonalBest: true } });
+    const outcome = (snap.session as { outcome: { result: { correct: number; total: number } } }).outcome;
+    expect(outcome.result.total).toBe(20);
+    expect(outcome.result.correct).toBeGreaterThanOrEqual(15);
+    expect(snap.save.daily['2026-10-13']).toEqual(outcome.result);
+    expect(snap.status.dailyToday).toEqual(outcome.result);
+
+    store.startDaily();
+    expect(store.getSnapshot().session).toBe(snap.session);
+
+    store.startDaily({ restart: true });
+    for (let i = 0; i < 20; i++) {
+      store.answer('fold');
+      store.next();
+    }
+    expect(store.getSnapshot().session).toMatchObject({ outcome: { accepted: false } });
+  });
+
+  it('resumes an unfinished daily instead of restarting it', () => {
+    const { store, advance } = setup();
+    store.startDaily();
+    store.answer('fold');
+    store.next();
+    advance(5000);
+    store.startDaily();
+    expect(store.getSnapshot().session).toMatchObject({ kind: 'daily', index: 1 });
+    expect(store.getSnapshot().current?.shownAt).toBe(6000);
+  });
+});
+
+describe('endphase run', () => {
+  it('runs until the third mistake and records the run', () => {
+    const { store, data } = setup();
+    store.startRun();
+    expect(store.getSnapshot().save.activeRun).toMatchObject({ status: 'running', lives: 3 });
+    for (let i = 0; i < 40 && !(store.getSnapshot().session as { outcome: unknown }).outcome; i++) {
+      const spot = store.getSnapshot().current!.spot;
+      store.answer(wrongAction(data, spot));
+      expect(store.getSnapshot().last?.outcome.record.mode).toBe('run');
+      store.next();
+    }
+    const snap = store.getSnapshot();
+    // Close spots cost no life, so the bust level depends on the dealt spots; the run must end before the final table.
+    expect(snap.session).toMatchObject({ kind: 'run', outcome: { summary: { finalTable: false }, isPersonalBest: true } });
+    const summary = (snap.session as { outcome: { summary: { placement: number } } }).outcome.summary;
+    expect(summary.placement).toBeGreaterThan(10);
+    expect(snap.save.activeRun).toBeNull();
+    expect(snap.save.bestRun?.placement).toBe(summary.placement);
+    expect(snap.current).toBeNull();
+  });
+
+  it('continues a saved run after a reload', () => {
+    const initial: SaveState = { ...emptyState(), activeRun: { ...startRun(), levelIndex: 2, answered: 10 } };
+    const { store } = setup({}, initial);
+    store.startRun();
+    const snap = store.getSnapshot();
+    expect(snap.save.activeRun).toMatchObject({ levelIndex: 2, answered: 10 });
+    expect(Math.abs(snap.current!.spot.stack - RUN_LEVEL_STACKS[2])).toBeLessThanOrEqual(1);
+  });
+
+  it('keeps a finished run visible until restarted', () => {
+    const { store, data } = setup();
+    store.startRun();
+    while (!(store.getSnapshot().session as { outcome: unknown }).outcome) {
+      store.answer(wrongAction(data, store.getSnapshot().current!.spot));
+      store.next();
+    }
+    const finished = store.getSnapshot().session;
+    store.startRun();
+    expect(store.getSnapshot().session).toBe(finished);
+    store.startRun({ restart: true });
+    expect(store.getSnapshot().session).toEqual({ kind: 'run', outcome: null });
+    expect(store.getSnapshot().save.activeRun?.status).toBe('running');
+  });
+});
+
+describe('celebration, export and import', () => {
+  it('celebrates a rank-up until dismissed', () => {
+    const initial: SaveState = { ...emptyState(), profile: { xp: 495, combo: 0, soundOn: true } };
+    const { store, data } = setup({}, initial);
+    store.startTraining();
+    store.answer(rightAction(data, store.getSnapshot().current!.spot));
+    expect(store.getSnapshot().celebration).toBe('Donkey');
+    store.dismissCelebration();
+    expect(store.getSnapshot().celebration).toBeNull();
+  });
+
+  it('backs up the current state before importing', async () => {
+    const initial: SaveState = { ...emptyState(), profile: { xp: 120, combo: 0, soundOn: true } };
+    const { store, save, create } = setup({}, initial);
+    const imported: SaveState = { ...emptyState(), profile: { xp: 900, combo: 0, soundOn: false } };
+    await store.importState(serialize(imported));
+    expect(create).toHaveBeenCalledWith(serialize(initial));
+    expect(store.getSnapshot().save).toEqual(imported);
+    expect(save).toHaveBeenLastCalledWith(imported);
+    expect(JSON.parse(store.exportState()).profile.xp).toBe(900);
+  });
+
+  it('rejects an invalid import without changing anything', async () => {
+    const { store, create } = setup();
+    await expect(store.importState('{kaputt')).rejects.toBeInstanceOf(SaveFormatError);
+    expect(create).not.toHaveBeenCalled();
+    expect(store.getSnapshot().save).toEqual(emptyState());
+  });
+
+  it('blocks every mode in read-only mode', () => {
+    const { store } = setup({ readOnly: true });
+    expect(() => store.startTraining()).toThrow();
+    expect(() => store.startDaily()).toThrow();
+    expect(() => store.startRun()).toThrow();
   });
 });

@@ -15,7 +15,12 @@ function renderApp(info: Partial<PersistenceInfo> = {}, onApplyUpdate?: () => Pr
   const save = vi.fn();
   const store = createGameStore({
     data: makeFixture((h) => (84 - h) / 10),
-    persistence: { initial: emptyState(), info: { ...baseInfo, ...info }, save },
+    persistence: {
+      initial: emptyState(),
+      info: { ...baseInfo, ...info },
+      save,
+      backups: { list: async () => [], read: async () => undefined, remove: async () => {}, create: async () => 'corrupt-backup:test' },
+    },
     rng: mulberry32(4),
     now: () => new Date(2026, 9, 13, 18, 0),
     clock: () => 0,

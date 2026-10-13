@@ -73,7 +73,10 @@ Liegt |EV(Aktion A) − EV(Aktion B)| < **0,1 BB**, gilt der Spot als **Grenzfal
 ### 4.4 Validierung
 
 - Equity-Stichproben gegen bekannte Werte: AA vs. KK ≈ 82 %, AKs vs. QQ ≈ 46 %, AKo vs. 22 ≈ 47 %, 72o vs. AA ≈ 12 %
-- Push/Fold-Ranges gegen veröffentlichte Referenzwerte. Mindestens geprüft werden SB-Shove heads-up (SB vs. BB) bei 10 BB und 15 BB sowie BB-Call gegen SB-Shove. Toleranz: Abweichung der Range-Breite ≤ 3 Prozentpunkte.
+- Push/Fold-Ranges: Für 8-max mit BB-Ante gibt es keine frei zugänglichen, belastbaren Referenz-Charts (Recherche vom 2026-10-13). Statt gegen fremde Charts wird deshalb mathematisch geprüft:
+  - **Gleichgewichts-Nachweis:** Kein Spieler kann in irgendeinem Spot durch Abweichen mehr als 0,05 BB gewinnen (Exploitability < 0,05 BB, also klar unter der Grenzfall-Schwelle von 0,1 BB).
+  - **Plausibilitätsregeln:** AA wird immer geshovt und gecallt. 72o wird bei 20 BB aus UTG gefoldet. Der BB callt bei 1 BB alles. Die Ranges werden mit sinkendem Stack nicht enger und sind aus späteren Positionen breiter.
+  - **Optional, manuell:** Stichproben der Range-Breiten mit einem externen Rechner (z. B. ICMIZER) vergleichen.
 - Ein Verstoß ist ein Fehler. Die Datendatei wird in diesem Fall nicht ausgeliefert.
 
 ## 5. Spot-Auswahl

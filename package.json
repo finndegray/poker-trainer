@@ -9,7 +9,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "data:equity": "tsx scripts/compute-equity.ts",
-    "data:pushfold": "tsx scripts/build-pushfold.ts"
+    "data:pushfold": "tsx scripts/build-pushfold.ts",
+    "data:print": "tsx scripts/print-ranges.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

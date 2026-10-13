@@ -1,3 +1,4 @@
+import { formatPercent } from '../../app/format';
 import type { WeekPoint } from '../../game/stats';
 
 const WIDTH = 320;
@@ -23,7 +24,7 @@ export function TrendChart({ points }: { points: readonly WeekPoint[] }) {
               <rect x={x} y={CHART_BOTTOM - height} width={BAR} height={height} rx="3" className="trend-chart__bar" />
             )}
             <text x={x + BAR / 2} y={CHART_BOTTOM - height - 5} textAnchor="middle" className="trend-chart__value">
-              {rate === null ? '–' : `${Math.round(rate * 100)}`}
+              {formatPercent(rate)}
             </text>
             <text x={x + BAR / 2} y={HEIGHT - 12} textAnchor="middle" className="trend-chart__label">
               {shortDate(p.weekStart)}

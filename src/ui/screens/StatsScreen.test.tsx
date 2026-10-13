@@ -28,8 +28,8 @@ function state(): SaveState {
       '2026-10-12': { dateKey: '2026-10-12', correct: 15, total: 20, durationMs: 90_000 },
       '2026-10-13': { dateKey: '2026-10-13', correct: 18, total: 20, durationMs: 80_000 },
     },
-    runs: [{ ts: 5, dateKey: '2026-10-12', placement: 312, finalTable: false, levelsCompleted: 6, bonusXp: 60 }],
-    bestRun: { ts: 5, dateKey: '2026-10-12', placement: 312, finalTable: false, levelsCompleted: 6, bonusXp: 60 },
+    runs: [{ ts: 5, dateKey: '2026-10-12', placement: 1240, finalTable: false, levelsCompleted: 3, bonusXp: 30 }],
+    bestRun: { ts: 5, dateKey: '2026-10-12', placement: 1240, finalTable: false, levelsCompleted: 3, bonusXp: 30 },
   };
 }
 
@@ -53,9 +53,11 @@ describe('StatsScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Call vs. Shove' }));
     expect(screen.getByTitle('K9o: 1 von 1 falsch')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Call vs. Shove' }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('img', { name: 'Trefferquote der letzten 8 Wochen' })).toBeTruthy();
-    expect(screen.getByText('Beste Platzierung: Platz 312')).toBeTruthy();
-    expect(screen.getByText('12.10.: Platz 312')).toBeTruthy();
+    const chart = within(screen.getByRole('img', { name: 'Trefferquote der letzten 8 Wochen' }));
+    expect(chart.getByText('67 %')).toBeTruthy();
+    expect(chart.getByText('0 %')).toBeTruthy();
+    expect(screen.getByText('Beste Platzierung: Platz 1.240')).toBeTruthy();
+    expect(screen.getByText('12.10.: Platz 1.240')).toBeTruthy();
     const dailies = screen.getAllByText(/^1[0-9]\.10\.: \d+\/20$/).map((el) => el.textContent);
     expect(dailies).toEqual(['13.10.: 18/20', '12.10.: 15/20']);
   });

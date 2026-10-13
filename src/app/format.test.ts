@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionLabel, aggressiveWord, evLine, formatEv, formatPercent, verdictLabel } from './format';
+import { actionLabel, aggressiveWord, evLine, formatCount, formatEv, formatPercent, verdictLabel } from './format';
 
 describe('format', () => {
   it('formats EVs the German way with a sign', () => {
@@ -15,6 +15,11 @@ describe('format', () => {
     expect(formatPercent(0.625)).toBe('63 %');
     expect(formatPercent(1)).toBe('100 %');
     expect(formatPercent(null)).toBe('–');
+  });
+
+  it('formats counts with the German thousands separator', () => {
+    expect(formatCount(1240)).toBe('1.240');
+    expect(formatCount(312)).toBe('312');
   });
 
   it('labels actions, verdicts and EV lines', () => {

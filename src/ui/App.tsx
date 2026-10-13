@@ -19,21 +19,24 @@ export function App({ onApplyUpdate, sound = silentPlayer }: { onApplyUpdate?: (
   const home = () => setScreen('home');
 
   return (
-    <main className="app">
-      <h1 className="app__title">Poker-Trainer</h1>
-      <Notices
-        info={game.info}
-        saveError={game.saveError}
-        now={now}
-        notice={game.notice}
-        onDismissNotice={store.dismissNotice}
-        onApplyUpdate={onApplyUpdate}
-      />
-      {screen === 'home' && <HomeScreen onNavigate={setScreen} />}
-      {(screen === 'training' || screen === 'daily' || screen === 'run') && <PlayScreen key={screen} mode={screen} onBack={home} />}
-      {screen === 'stats' && <StatsScreen onBack={home} />}
-      {screen === 'settings' && <SettingsScreen onBack={home} />}
+    <>
+      {/* While the overlay is open, the rest of the app is neither focusable nor clickable. */}
+      <main className="app" inert={game.celebration !== null}>
+        <h1 className="app__title">Poker-Trainer</h1>
+        <Notices
+          info={game.info}
+          saveError={game.saveError}
+          now={now}
+          notice={game.notice}
+          onDismissNotice={store.dismissNotice}
+          onApplyUpdate={onApplyUpdate}
+        />
+        {screen === 'home' && <HomeScreen onNavigate={setScreen} />}
+        {(screen === 'training' || screen === 'daily' || screen === 'run') && <PlayScreen key={screen} mode={screen} onBack={home} />}
+        {screen === 'stats' && <StatsScreen onBack={home} />}
+        {screen === 'settings' && <SettingsScreen onBack={home} />}
+      </main>
       {game.celebration && <Celebration rank={game.celebration} onClose={store.dismissCelebration} />}
-    </main>
+    </>
   );
 }

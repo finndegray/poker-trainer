@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatPercent } from '../../app/format';
+import { formatCount, formatPercent } from '../../app/format';
 import { POSITIONS, POSITION_LABELS } from '../../engine/positions';
 import { STACK_BUCKETS, type SpotKind } from '../../engine/spot-generator';
 import {
@@ -146,14 +146,14 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
       <section className="panel stats-section">
         <h3 className="stats-section__title">Endphase-Run</h3>
         {game.save.bestRun ? (
-          <p>Beste Platzierung: Platz {game.save.bestRun.placement}</p>
+          <p>Beste Platzierung: Platz {formatCount(game.save.bestRun.placement)}</p>
         ) : (
           <p className="muted">Noch kein Run gespielt</p>
         )}
         <ul className="stats-list">
           {recentRuns.map((r) => (
             <li key={r.ts}>
-              {shortDate(r.dateKey)}: Platz {r.placement}
+              {shortDate(r.dateKey)}: Platz {formatCount(r.placement)}
             </li>
           ))}
         </ul>

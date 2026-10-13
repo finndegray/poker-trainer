@@ -9,6 +9,10 @@ export function formatEv(ev: number): string {
   return `${ev > 0 ? '+' : MINUS}${evNumber.format(Math.abs(ev))} BB`;
 }
 
+const countNumber = new Intl.NumberFormat('de-DE');
+/** Whole numbers with the German thousands separator, e.g. 1.240. */
+export const formatCount = (n: number): string => countNumber.format(n);
+
 export function formatPercent(rate: number | null): string {
   return rate === null ? '–' : `${Math.round(rate * 100)} %`;
 }

@@ -42,7 +42,7 @@
 .stats-table td {
   padding: 6px 4px;
   text-align: left;
-  border-bottom: 1px solid rgba(243, 233, 198, 0.12);
+  border-bottom: 1px solid var(--rule);
 }
 
 .stats-table td {
@@ -80,12 +80,12 @@
   font-size: clamp(7px, 2.1vw, 11px);
   font-weight: 600;
   border-radius: 2px;
-  color: #ffffff;
+  color: var(--heat-fg);
 }
 
 .heat--none {
   background: var(--felt-dark);
-  color: rgba(243, 233, 198, 0.35);
+  color: var(--heat-none-fg);
 }
 
 .trend-chart {
@@ -94,7 +94,7 @@
 }
 
 .trend-chart__axis {
-  stroke: rgba(243, 233, 198, 0.3);
+  stroke: var(--axis);
 }
 
 .trend-chart__bar {

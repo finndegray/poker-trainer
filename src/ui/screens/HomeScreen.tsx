@@ -1,3 +1,5 @@
+import { formatCount } from '../../app/format';
+import { RUN_LEVEL_STACKS } from '../../game/endphase-run';
 import { StatusBar } from '../components/StatusBar';
 import { useGame } from '../GameContext';
 import './screens.css';
@@ -23,9 +25,9 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
     {
       title: 'Endphase-Run',
       text: runRunning
-        ? `Run läuft – Level ${activeRun.levelIndex + 1} von 8`
+        ? `Run läuft – Level ${activeRun.levelIndex + 1} von ${RUN_LEVEL_STACKS.length}`
         : bestRun
-          ? `Beste Platzierung: Platz ${bestRun.placement}`
+          ? `Beste Platzierung: Platz ${formatCount(bestRun.placement)}`
           : 'Überlebe die Endphase eines MTT mit 3 Leben.',
       button: runRunning ? 'Run fortsetzen' : 'Run starten',
       target: 'run',

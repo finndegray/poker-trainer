@@ -57,6 +57,12 @@ describe('App', () => {
     expect(screen.getByLabelText('Pokertisch')).toBeTruthy();
   });
 
+  it('shows the best placement with a thousands separator', () => {
+    const best = { ts: 5, dateKey: '2026-10-12', placement: 1240, finalTable: false, levelsCompleted: 3, bonusXp: 30 };
+    renderWithStore(<App />, { initial: { ...emptyState(), runs: [best], bestRun: best } });
+    expect(screen.getByText('Beste Platzierung: Platz 1.240')).toBeTruthy();
+  });
+
   it('opens statistics and settings', () => {
     renderWithStore(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Statistik ansehen' }));
@@ -148,7 +154,11 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: evOf(data, spot) > 0 ? 'a' : 'f' });
     expect(screen.getByRole('dialog', { name: 'Aufgestiegen!' })).toBeTruthy();
     expect(screen.getByText('Du bist jetzt Donkey.')).toBeTruthy();
+    const main = screen.getByRole('main');
+    expect(main.hasAttribute('inert')).toBe(true);
+    expect(main.contains(screen.getByRole('dialog'))).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Weiter so!' }));
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(main.hasAttribute('inert')).toBe(false);
   });
 });

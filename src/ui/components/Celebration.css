@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(10, 56, 32, 0.82);
+  background: var(--overlay);
   overflow: hidden;
 }
 

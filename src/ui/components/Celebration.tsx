@@ -7,7 +7,13 @@ const PIECES = Array.from({ length: 24 }, (_, i) => i);
 export function Celebration({ rank, onClose }: { rank: RankName; onClose: () => void }) {
   const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
+    const previous = document.activeElement;
     button.current?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };

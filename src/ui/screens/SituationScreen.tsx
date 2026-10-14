@@ -165,7 +165,7 @@ export function SituationScreen({ onBack, now = defaultNow }: { onBack: () => vo
 
   const start = () => {
     const at = now();
-    const setup = setupOf(draft, situation?.setup.handId ?? `SIT${at.getTime()}`);
+    const setup = setupOf(draft, `SIT${at.getTime()}`);
     if (!setup) return;
     setStartedAt(playedAtOf(at));
     setSituation({ setup, steps: [] });

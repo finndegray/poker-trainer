@@ -6,8 +6,9 @@
 
 .card-picker__suit {
   display: grid;
-  grid-template-columns: repeat(13, minmax(0, 1fr));
-  gap: 4px;
+  /* Every card stays at least 44 px wide; a suit wraps onto a second row when 13 do not fit. */
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 3px;
 }
 
 .card-picker__card {
@@ -47,12 +48,4 @@
 .card-picker__card[disabled] {
   opacity: 0.25;
   cursor: not-allowed;
-}
-
-/* Phones: each suit in two rows of seven where that leaves every card 44 px wide; on narrower panels the row wraps. */
-@media (max-width: 600px) {
-  .card-picker__suit {
-    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
-    gap: 3px;
-  }
 }

@@ -1,0 +1,79 @@
+.situation-setup,
+.situation-board,
+.situation-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.situation-setup p,
+.situation-summary p {
+  margin: 0;
+}
+
+.situation-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.situation-field input {
+  min-height: 44px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 16px;
+  background: var(--felt-dark);
+  color: var(--cream);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.situation-field input:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.situation-stacks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.situation-size {
+  max-width: 220px;
+}
+
+.situation-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.situation-decisions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.situation-decisions .btn {
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  font-size: 14px;
+}
+
+.situation-decisions .btn[aria-pressed='true'] {
+  border-color: var(--gold);
+}
+
+/* A 375 px phone leaves 309 px inside a panel, too little for seven 44 px cards: let the picker use the panel's padding. */
+@media (max-width: 600px) {
+  .situation-setup .card-picker,
+  .situation-board .card-picker {
+    margin-inline: -10px;
+  }
+}

@@ -12,6 +12,7 @@
 
 .card-picker__card {
   appearance: none;
+  min-width: 44px;
   min-height: 44px;
   padding: 0;
   border: 2px solid transparent;
@@ -48,9 +49,10 @@
   cursor: not-allowed;
 }
 
-/* Phones: each suit in two rows of seven, so every card keeps a tappable width. */
+/* Phones: each suit in two rows of seven where that leaves every card 44 px wide; on narrower panels the row wraps. */
 @media (max-width: 600px) {
   .card-picker__suit {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 3px;
   }
 }

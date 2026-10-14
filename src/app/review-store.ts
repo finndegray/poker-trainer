@@ -236,7 +236,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
       let tournaments = 0;
       const failures: string[] = [];
       for (const [id, items] of analyzed) {
-        const added = items.map(handRecordOf);
+        const added = items.map((item) => handRecordOf(item));
         try {
           // Load, merge and write in one serial step, so a background re-rating never interleaves with it.
           const record = await serial(async () => {

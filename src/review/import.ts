@@ -3,6 +3,7 @@ import { ANALYSIS_VERSION, type HandAnalysis } from './analysis';
 import type { HandAnalyzer } from './analyzer';
 import { ArchiveFormatError, type HandRecord, REVIEW_SCHEMA_VERSION, type TournamentRecord } from './archive';
 import { type ParsedHand, type SkippedHand, parseHistory } from './parse';
+import { situationKindOf } from './situation-tournaments';
 import { summarize } from './summary';
 import { type TournamentKind, detectTournamentKind } from './tournament-kind';
 
@@ -164,7 +165,8 @@ export async function analyzePlan(
   return out;
 }
 
-export function handRecordOf({ hand, analysis }: AnalyzedHand): HandRecord {
+/** `name` only for saved situations; imported hands get no name field, so their records stay as before. */
+export function handRecordOf({ hand, analysis }: AnalyzedHand, name?: string): HandRecord {
   return {
     reviewSchemaVersion: REVIEW_SCHEMA_VERSION,
     id: hand.id,
@@ -174,6 +176,7 @@ export function handRecordOf({ hand, analysis }: AnalyzedHand): HandRecord {
     raw: hand.raw,
     analysisVersion: analysis.version,
     analysis,
+    ...(name === undefined ? {} : { name }),
   };
 }
 
@@ -197,7 +200,10 @@ function mergeHandIds(loaded: readonly string[], previous: readonly string[]): s
   return out;
 }
 
-/** Builds the tournament record from all its hands (old and new), keeping a kind the player chose and every previous hand id. */
+/**
+ * Builds the tournament record from all its hands (old and new), keeping a kind the player chose and every previous
+ * hand id. The tournaments of saved situations always keep their fixed kind.
+ */
 export function tournamentRecordOf(
   id: string,
   name: string,
@@ -206,8 +212,9 @@ export function tournamentRecordOf(
   kindOverride: TournamentKind | null = null,
 ): TournamentRecord {
   const sorted = [...hands].sort((a, b) => a.playedAt.localeCompare(b.playedAt) || a.id.localeCompare(b.id));
-  const detectedKind = previous?.detectedKind ?? detectTournamentKind(name);
-  const kind = kindOverride ?? previous?.kind ?? detectedKind;
+  const fixed = situationKindOf(id);
+  const detectedKind = fixed ?? previous?.detectedKind ?? detectTournamentKind(name);
+  const kind = fixed ?? kindOverride ?? previous?.kind ?? detectedKind;
   const handIds = mergeHandIds(sorted.map((h) => h.id), previous?.handIds ?? []);
   const analysisVersion = sorted.length === 0 ? ANALYSIS_VERSION : Math.min(...sorted.map((h) => h.analysisVersion));
   return {

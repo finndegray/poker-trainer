@@ -16,6 +16,7 @@ import {
   loadArchiveIndex,
   loadHands,
   memoryReviewBackend,
+  MAX_HAND_NAME,
   readHand,
   readTournament,
   removeTournament,
@@ -208,5 +209,20 @@ describe('archive write guards', () => {
     const failing = { ...backend, setMany: () => Promise.reject(quota) };
     await expect(writeRecords(failing, [tournament], [handRecord])).rejects.toBe(quota);
     expect(backend.dump()).toEqual({});
+  });
+});
+
+describe('names of saved situations (Plan 10)', () => {
+  it('reads a hand record with a name and every record without one', () => {
+    const named = { ...handRecord, name: 'AKo UTG · 25 BB' };
+    expect(readHand(JSON.stringify(named))).toEqual(named);
+    expect('name' in readHand(JSON.stringify(handRecord))).toBe(false);
+  });
+
+  it('rejects an empty, too long or non-text name', () => {
+    for (const name of ['', '   ', 'x'.repeat(MAX_HAND_NAME + 1), 7, null]) {
+      expect(() => readHand(JSON.stringify({ ...handRecord, name }))).toThrow('Archiv-Eintrag nicht lesbar: Name');
+    }
+    expect(readHand(JSON.stringify({ ...handRecord, name: 'x'.repeat(MAX_HAND_NAME) })).name).toHaveLength(MAX_HAND_NAME);
   });
 });

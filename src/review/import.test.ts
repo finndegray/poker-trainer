@@ -23,6 +23,7 @@ import {
   writeFailureMessage,
 } from './import';
 import { parseHand } from './parse';
+import { SITUATION_TOURNAMENTS, isSituationTournament, situationKindOf } from './situation-tournaments';
 
 const file = (name: string, text: string) => ({ name, bytes: strToU8(text) });
 const texts = (...list: string[]) => list.map((text, i) => ({ name: `f${i}.txt`, text }));
@@ -203,5 +204,26 @@ describe('writeFailureMessage', () => {
   it('rethrows errors that are not archive format problems', () => {
     const failure = new Error('IndexedDB kaputt');
     expect(() => writeFailureMessage(failure, 'x')).toThrow(failure);
+  });
+});
+
+describe('records of saved situations (Plan 10)', () => {
+  const hand = parseHand(bounty);
+  const analysis = { version: ANALYSIS_VERSION, decisions: [] };
+
+  it('stores a name only when one is given', () => {
+    expect('name' in handRecordOf({ hand, analysis })).toBe(false);
+    expect(handRecordOf({ hand, analysis }, 'AKo UTG · 25 BB').name).toBe('AKo UTG · 25 BB');
+  });
+
+  it('knows the three situation tournaments and keeps their kind fixed', () => {
+    expect(situationKindOf('SIT-satellit')).toBe('satellit');
+    expect(situationKindOf('318083464')).toBeNull();
+    expect(isSituationTournament(SITUATION_TOURNAMENTS.bounty.id)).toBe(true);
+    const records = [handRecordOf({ hand, analysis })];
+    const { id, name } = SITUATION_TOURNAMENTS.satellit;
+    const fresh = tournamentRecordOf(id, name, records, null);
+    expect(fresh).toMatchObject({ name: 'Eigene Situationen (Satellit)', detectedKind: 'satellit', kind: 'satellit' });
+    expect(tournamentRecordOf(id, name, records, { ...fresh, kind: 'normal' }, 'bounty').kind).toBe('satellit');
   });
 });

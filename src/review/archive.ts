@@ -11,6 +11,8 @@ export const REVIEW_SCHEMA_VERSION = 1;
 export const REVIEW_DB = 'poker-trainer-review';
 export const TOURNAMENT_PREFIX = 'tournament:';
 export const HAND_PREFIX = 'hand:';
+/** Longest name of a saved situation (optional field of a hand record). */
+export const MAX_HAND_NAME = 60;
 
 export type TournamentRecord = {
   reviewSchemaVersion: 1;
@@ -35,6 +37,8 @@ export type HandRecord = {
   raw: string;
   analysisVersion: number;
   analysis: HandAnalysis;
+  /** Only saved situations have a name; imported hands never carry the field. */
+  name?: string;
 };
 
 export interface ReviewBackend {
@@ -126,10 +130,13 @@ export function isHandAnalysis(v: unknown): v is HandAnalysis {
   );
 }
 
+export const isHandName = (v: unknown): v is string => isString(v) && v.trim().length > 0 && v.length <= MAX_HAND_NAME;
+
 /** Raw text and ids must be intact; a broken analysis is not fatal, it is computed again. */
 export function readHand(text: string): HandRecord {
   const r = parseRecord(text);
   if (!isString(r.id) || !isString(r.tournamentId) || !isString(r.raw) || !isString(r.playedAt) || !isString(r.dateKey)) corrupt('Hand');
+  if (r.name !== undefined && !isHandName(r.name)) corrupt('Name');
   return r as unknown as HandRecord;
 }
 

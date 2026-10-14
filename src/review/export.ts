@@ -1,4 +1,4 @@
-import { REVIEW_SCHEMA_VERSION } from './archive';
+import { REVIEW_SCHEMA_VERSION, isHandName } from './archive';
 import { type TournamentKind, isTournamentKind } from './tournament-kind';
 
 /** Key of the optional archive part in a manual export file; the save itself stays unchanged. */
@@ -7,7 +7,8 @@ export const EXPORT_KEY = 'reviewArchive';
 export type ArchiveExport = {
   reviewSchemaVersion: 1;
   tournaments: { id: string; name: string; kind: TournamentKind }[];
-  hands: { id: string; tournamentId: string; raw: string }[];
+  /** `name` only for saved situations; exports before Plan 10 never have it. */
+  hands: { id: string; tournamentId: string; raw: string; name?: string }[];
 };
 
 /** Without an archive part the export is exactly the save text, as before. */
@@ -41,7 +42,9 @@ export function readArchivePart(text: string): ArchiveExport | null {
   if (!Array.isArray(tournaments) || !tournaments.every((t) => isObject(t) && isString(t.id) && isString(t.name) && isTournamentKind(t.kind))) {
     return unreadable();
   }
-  if (!Array.isArray(hands) || !hands.every((h) => isObject(h) && isString(h.id) && isString(h.tournamentId) && isString(h.raw))) {
+  const isHand = (h: unknown) =>
+    isObject(h) && isString(h.id) && isString(h.tournamentId) && isString(h.raw) && (h.name === undefined || isHandName(h.name));
+  if (!Array.isArray(hands) || !hands.every(isHand)) {
     return unreadable();
   }
   return part as unknown as ArchiveExport;

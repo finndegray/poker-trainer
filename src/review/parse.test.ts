@@ -4,6 +4,7 @@ import bounty from './fixtures/bounty.txt?raw';
 import dailyClassic from './fixtures/daily-classic.txt?raw';
 import steps from './fixtures/step-satellites.txt?raw';
 import { HERO, type HandEvent, type ParsedHand, parseHand, parseHistory, splitHands } from './parse';
+import { ggHand } from './test-hands';
 
 const cards = (text: string) => text.split(' ').map(parseCard);
 const byId = (hands: ParsedHand[], id: string) => hands.find((h) => h.id === id)!;
@@ -151,5 +152,20 @@ describe('parseHistory', () => {
   it('keeps a hand without hole cards; the analysis marks it as not rated', () => {
     const hand = parseHand(bounty.replace('Dealt to Hero [6c 6d]', 'Dealt to Hero '));
     expect(hand.heroCards).toBeNull();
+  });
+});
+
+describe('hands of saved situations (Plan 10)', () => {
+  const situation = (id: string, tournamentId: string) =>
+    ggHand({ id, tournamentId, tournamentName: 'Eigene Situationen (Bounty)', hero: 'BTN', bigBlind: 800, ante: 100, lines: ['Hero: folds'] });
+
+  it('reads SIT hand ids and the SIT tournaments', () => {
+    const hand = parseHand(situation('SIT1760421600000', 'SIT-bounty'));
+    expect(hand).toMatchObject({ id: 'SIT1760421600000', tournamentId: 'SIT-bounty', tournamentName: 'Eigene Situationen (Bounty)' });
+  });
+
+  it('still rejects other ids', () => {
+    expect(parseHistory(situation('XY1', '1')).skipped).toEqual([{ id: 'XY1', reason: 'Format nicht erkannt' }]);
+    expect(parseHistory(situation('SIT1', 'SIT-1')).skipped).toEqual([{ id: 'SIT1', reason: 'Format nicht erkannt' }]);
   });
 });

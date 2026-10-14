@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { getPushFoldData } from '../app/data';
+import { analyzeHand } from '../review/analysis';
+import { parseHand } from '../review/parse';
 import { parseCard } from '../engine/cards';
 import { type LegalActions, type Situation, type SituationStep, addStep, bbToChips, playSituation } from '../situation/model';
-import { sameStacks } from '../situation/test-situations';
-import { defaultSituationName, lastEventText, parseBbInput, promptText, situationChoices, sizeOf, stepOf } from './situation-view';
+import { TEST_PLAYED_AT, sameStacks } from '../situation/test-situations';
+import { situationText } from '../situation/text';
+import { defaultSituationName, lastEventText, parseBbInput, promptText, raiseWordAt, situationActionLabel, situationChoices, situationVerdictLabel, sizeOf, stepOf } from './situation-view';
 
 const start: Situation = {
   setup: { handId: 'SIT1', kind: 'normal', hero: 'CO', heroCards: [parseCard('Ah'), parseCard('Kd')], stacks: sameStacks(25) },
@@ -51,6 +55,38 @@ describe('situation view helpers', () => {
     });
     const bb = legalOf(flop);
     expect(situationChoices(bb, sizeOf(bb, '')).map((c) => c.label)).toEqual(['Check', 'Bet 1,8 BB', 'All-in 23,9 BB']);
+  });
+
+  it('names raises like the training: Raise when opening, then 3-Bet and 4-Bet preflop, always Raise postflop', () => {
+    const at = (s: Situation) => {
+      const state = playSituation(s);
+      return raiseWordAt(state.events, state.events.length);
+    };
+    expect(at(start)).toBe('Raise');
+    const vsOpen = play({ type: 'raise', to: bbToChips(2.2) }, ...folds(3));
+    expect(at(vsOpen)).toBe('3-Bet');
+    const legal = legalOf(vsOpen);
+    expect(situationChoices(legal, sizeOf(legal, ''), at(vsOpen)).map((c) => c.label)).toContain('3-Bet auf 6,6 BB');
+    const vs3bet = addStep(vsOpen, { type: 'raise', to: bbToChips(6.6) });
+    expect(at(play({ type: 'raise', to: bbToChips(2.2) }, ...folds(3), { type: 'raise', to: bbToChips(6.6) }, ...folds(3)))).toBe('4-Bet');
+    expect(at(vs3bet)).toBe('4-Bet');
+    const flop = addStep(play(...folds(4), { type: 'call' }, ...folds(2), { type: 'check' }), {
+      type: 'board',
+      cards: [parseCard('2c'), parseCard('7d'), parseCard('9h')],
+    });
+    expect(at(flop)).toBe('Raise');
+  });
+
+  it('labels the summary like the training: 3-Bet preflop, postflop verdict words', () => {
+    const labels = { error: 'Fehler', hint: 'Hinweis', questionable: 'Fraglich', close: 'Knapp', correct: 'Richtig', unrated: 'Nicht bewertet' };
+    const preflop: SituationStep[] = [{ type: 'raise', to: bbToChips(2.2) }, ...folds(3), { type: 'raise', to: bbToChips(6.6) }, ...folds(3), { type: 'call' }];
+    const hand = play(...preflop, { type: 'board', cards: [parseCard('Qh'), parseCard('7c'), parseCard('2d')] }, { type: 'check' }, { type: 'bet', to: bbToChips(7) });
+    const { events } = playSituation(hand);
+    const [threeBet, bet] = analyzeHand(parseHand(situationText(hand, TEST_PLAYED_AT)), getPushFoldData()).decisions;
+    expect(situationActionLabel(threeBet, events)).toBe('3-Bet auf 6,6 BB');
+    expect(situationVerdictLabel(threeBet, 'normal', labels)).toBe('Richtig');
+    expect(situationActionLabel(bet, events)).toBe('Bet 7 BB');
+    expect(['Passt', 'Fraglich', 'Wahrscheinlich Fehler']).toContain(situationVerdictLabel(bet, 'normal', labels));
   });
 
   it('turns a button into the step of the model', () => {

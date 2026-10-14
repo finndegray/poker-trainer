@@ -15,6 +15,7 @@ Ein persönlicher Trainer, mit dem Florian seine Entscheidungen in **Online-MTTs
 | 3 – Postflop | Pot Odds/Equity unter Zeitdruck, später C-Bets und Draws | später, eigene Spec |
 | 5 – Hand-Review | GGPoker-Hand-Historie importieren und jede Entscheidung bewerten (gut/schlecht und warum); Preflop über die vorhandenen Push/Fold-Daten und die Starthand-Charts, Postflop mit Faustregeln (Equity gegen geschätzte Range, Pot Odds), Archiv und Nachtraining | Spec `2026-10-13-hand-review-design.md`, Pläne 7–9 |
 | 4 – Starthände (tiefe Stacks) | Open-Raise (RFI), Reaktion auf Open-Raise (3-Bet/Call/Fold), Reaktion auf 3-Bet (4-Bet/Call/Fold) bei ca. 40 und 100 BB; Grundlage sind kuratierte Standard-Charts (kein Solver-Ergebnis, im Trainer so gekennzeichnet) | nach Plan 4, eigene Spec (Wunsch des Nutzers vom 2026-10-13) |
+| 6 – Situation analysieren | Hand selbst nachstellen (Position, Stacks, Aktionen, Karten, Board), eigene Entscheidungen per Button mit Bewertung und Begründung; nur zur Analyse abseits des Tisches | Spec `2026-10-13-situation-analysis-design.md` (Wunsch des Nutzers vom 2026-10-13) |
 
 Gamification (XP, Ränge, Streak, Daily Challenge, Statistiken) gilt modulübergreifend und wird in Version 1 vollständig angelegt.
 

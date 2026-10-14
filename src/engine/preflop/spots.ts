@@ -10,11 +10,12 @@ export type PreflopSituation = { kind: PreflopKind; stack: StackDepth; hero: Pos
 export type PreflopSpot = PreflopSituation & { hand: HandClass };
 export type ChartKey = string;
 
-const OPEN_RAISE = 2.2;
-const SB_OPEN_RAISE = 3;
-const THREE_BET_IP = 3;
-const THREE_BET_BLINDS = 4;
-const FOUR_BET = 2.2;
+/** Sizes in BB (raise "to" totals); the situation analysis suggests the same sizes. */
+export const OPEN_RAISE = 2.2;
+export const SB_OPEN_RAISE = 3;
+export const THREE_BET_IP = 3;
+export const THREE_BET_BLINDS = 4;
+export const FOUR_BET = 2.2;
 const SB = seatOf('SB');
 const BB = seatOf('BB');
 

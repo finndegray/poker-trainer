@@ -9,7 +9,9 @@ import { useGame } from '../GameContext';
 import { useReview } from '../ReviewContext';
 import './review.css';
 
-export function ReviewOverview({ onImport, onOpen, now }: { onImport: () => void; onOpen: (id: string) => void; now: () => Date }) {
+type Props = { onImport: () => void; onOpen: (id: string) => void; onSituation?: () => void; now: () => Date };
+
+export function ReviewOverview({ onImport, onOpen, onSituation, now }: Props) {
   const review = useReview();
   const game = useGame();
   if (review.status === 'loading') return <p className="panel muted">Hand-Archiv wird geladen …</p>;
@@ -41,6 +43,11 @@ export function ReviewOverview({ onImport, onOpen, now }: { onImport: () => void
         <button type="button" className="btn btn--gold" onClick={onImport} disabled={!review.writable}>
           Hände importieren
         </button>
+        {onSituation && (
+          <button type="button" className="btn" onClick={onSituation}>
+            Situation nachstellen
+          </button>
+        )}
         {review.lockReason && <p className="muted">{review.lockReason}</p>}
         {retrainingCount(game.save) > 0 && (
           <p className="muted">

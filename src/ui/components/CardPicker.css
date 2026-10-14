@@ -1,0 +1,51 @@
+.card-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-picker__suit {
+  display: grid;
+  /* Every card stays at least 44 px wide; a suit wraps onto a second row when 13 do not fit. */
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 3px;
+}
+
+.card-picker__card {
+  appearance: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--card-black);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.card-picker__card--red {
+  color: var(--card-red);
+}
+
+.card-picker__card--picked {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
+.card-picker__card:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.card-picker__card[disabled] {
+  opacity: 0.25;
+  cursor: not-allowed;
+}

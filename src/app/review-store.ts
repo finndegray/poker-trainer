@@ -1,6 +1,6 @@
 import type { PushFoldData } from '../engine/pushfold-data';
 import type { RetrainingCandidate } from '../game/retraining';
-import { ANALYSIS_VERSION } from '../review/analysis';
+import { ANALYSIS_VERSION, type HandAnalysis } from '../review/analysis';
 import { type HandAnalyzer, createInlineAnalyzer } from '../review/analyzer';
 import {
   ArchiveFormatError,
@@ -11,6 +11,7 @@ import {
   TOURNAMENT_PREFIX,
   type TournamentRecord,
   isHandAnalysis,
+  isHandName,
   loadArchiveIndex,
   loadHands,
   removeTournament,
@@ -32,6 +33,7 @@ import {
 } from '../review/import';
 import { HandParseError, type ParsedHand, type SkippedHand, parseHand } from '../review/parse';
 import { retrainingCandidates } from '../review/retraining';
+import { situationKindOf } from '../review/situation-tournaments';
 import type { TournamentKind } from '../review/tournament-kind';
 
 export type ReviewHand = { record: HandRecord; hand: ParsedHand };
@@ -102,7 +104,17 @@ export type ReviewStore = {
    * `refreshStale` instead.
    */
   syncRetraining(): Promise<void>;
+  /** Rates one hand with the analyzer of the store (Web Worker with fallback) and writes nothing: the live rating of a situation. */
+  rateHand(hand: ParsedHand): Promise<HandAnalysis>;
+  /**
+   * Saves an entered situation (its generated hand text) with a name into its situation tournament, the same way an
+   * import does (rating, archive write, retraining queue). Writing tab only; throws a German message otherwise.
+   */
+  saveSituation(raw: string, name: string): Promise<TournamentRecord>;
 };
+
+export const SITUATION_SAVED_ALREADY = 'Diese Situation ist schon gespeichert.';
+export const SITUATION_NAME_INVALID = 'Bitte gib einen Namen mit höchstens 60 Zeichen ein.';
 
 export const LOCK_READ_ONLY = 'Nur-Lesen-Modus: Bitte die App aktualisieren, um Hände zu importieren.';
 export const LOCK_NEWER_ARCHIVE = 'Das Hand-Archiv stammt aus einer neueren Version – bitte die App aktualisieren.';
@@ -221,6 +233,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
     texts: readonly ImportText[],
     fileSkipped: readonly SkippedHand[],
     kinds: ReadonlyMap<string, TournamentKind> = new Map(),
+    names: ReadonlyMap<string, string> = new Map(),
   ): Promise<ImportSummary> {
     assertWritable();
     if (snapshot.progress) throw new Error('Es läuft bereits ein Import.');
@@ -236,7 +249,7 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
       let tournaments = 0;
       const failures: string[] = [];
       for (const [id, items] of analyzed) {
-        const added = items.map(handRecordOf);
+        const added = items.map((item) => handRecordOf(item, names.get(item.hand.id)));
         try {
           // Load, merge and write in one serial step, so a background re-rating never interleaves with it.
           const record = await serial(async () => {
@@ -417,14 +430,15 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
         part.tournaments.push({ id: t.id, name: t.name, kind: t.kind });
         const { hands, problems } = await loadHands(backend, t.handIds);
         omitted += problems.length;
-        for (const h of hands) part.hands.push({ id: h.id, tournamentId: h.tournamentId, raw: h.raw });
+        for (const h of hands) part.hands.push({ id: h.id, tournamentId: h.tournamentId, raw: h.raw, ...(h.name === undefined ? {} : { name: h.name }) });
       }
       return { part, omitted };
     },
     mergeExport(part) {
       const kinds = new Map(part.tournaments.map((t) => [t.id, t.kind] as const));
       const texts = part.hands.map((h) => ({ name: 'Export', text: h.raw }));
-      return importTexts(texts, [], kinds);
+      const names = new Map(part.hands.flatMap((h) => (h.name === undefined ? [] : [[h.id, h.name] as const])));
+      return importTexts(texts, [], kinds, names);
     },
     async syncRetraining() {
       const sink = deps.retraining;
@@ -450,6 +464,31 @@ export function createReviewStore(deps: ReviewStoreDeps): ReviewStore {
         });
         if (stop) break;
       }
+    },
+    async rateHand(hand) {
+      const [analysis] = await analyzer.analyze([hand]);
+      return analysis;
+    },
+    async saveSituation(raw, name) {
+      const trimmed = name.trim();
+      if (!isHandName(trimmed)) throw new Error(SITUATION_NAME_INVALID);
+      let hand: ParsedHand;
+      try {
+        hand = parseHand(raw);
+      } catch (error) {
+        if (!(error instanceof HandParseError)) throw error;
+        throw new Error(`Diese Situation kann ich nicht speichern: ${error.message}`);
+      }
+      if (!/^SIT\d+$/.test(hand.id) || situationKindOf(hand.tournamentId) === null) {
+        throw new Error('Das ist keine eigene Situation.');
+      }
+      // The same path as an import: write lock, rating, one archive write per tournament, retraining queue.
+      const summary = await importTexts([{ name: 'Situation', text: raw }], [], new Map(), new Map([[hand.id, trimmed]]));
+      if (summary.duplicates > 0) throw new Error(SITUATION_SAVED_ALREADY);
+      if (summary.failures) throw new Error(summary.failures[0]);
+      const saved = snapshot.tournaments.find((t) => t.id === hand.tournamentId);
+      if (summary.imported !== 1 || !saved) throw new Error('Diese Situation kann ich nicht speichern.');
+      return saved;
     },
   };
   return store;

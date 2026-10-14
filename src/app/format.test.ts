@@ -114,6 +114,8 @@ describe('starthand formatting', () => {
   it('formats the retraining hint and the queue size', () => {
     expect(retrainingHint('2026-10-12 15:46:28')).toBe('Aus deinem Turnier vom 12.10.');
     expect(retrainingHint('2026-01-05 09:00:00')).toBe('Aus deinem Turnier vom 05.01.');
+    expect(retrainingHint('2026-10-14 18:05:09', 'TM6532734973:13')).toBe('Aus deinem Turnier vom 14.10.');
+    expect(retrainingHint('2026-10-14 18:05:09', 'SIT1760457909000:10')).toBe('Aus deiner Situation vom 14.10.');
     expect(formatRetrainingCount(1)).toBe('1 Spot aus deinen Turnieren wartet im Training.');
     expect(formatRetrainingCount(200)).toBe('200 Spots aus deinen Turnieren warten im Training.');
   });

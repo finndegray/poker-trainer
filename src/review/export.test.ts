@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { deserialize, emptyState, serialize } from '../storage/schema';
 import { TODAY_SAVE } from '../storage/test-saves';
 import { type ArchiveExport, EXPORT_KEY, readArchivePart, withArchive } from './export';
+import { SITUATION_TOURNAMENTS } from './situation-tournaments';
 
 const part: ArchiveExport = {
   reviewSchemaVersion: 1,
@@ -29,5 +30,23 @@ describe('export with archive part', () => {
     const newer = withArchive(save, { ...part, reviewSchemaVersion: 2 } as unknown as ArchiveExport);
     expect(() => readArchivePart(newer)).toThrow('Hand-Archiv stammt aus einer neueren Version – bitte die App aktualisieren');
     expect(readArchivePart('kein JSON')).toBeNull();
+  });
+});
+
+describe('names of saved situations in the export (Plan 10)', () => {
+  const id = SITUATION_TOURNAMENTS.normal.id;
+  const named: ArchiveExport = {
+    reviewSchemaVersion: 1,
+    tournaments: [{ id, name: SITUATION_TOURNAMENTS.normal.name, kind: 'normal' }],
+    hands: [{ id: 'SIT1', tournamentId: id, raw: 'Poker Hand #SIT1: …', name: 'AKo UTG · 25 BB' }],
+  };
+
+  it('carries the name of a hand', () => {
+    expect(readArchivePart(withArchive(TODAY_SAVE, named))).toEqual(named);
+  });
+
+  it('rejects a broken name', () => {
+    const broken = { ...named, hands: [{ ...named.hands[0], name: 7 }] } as unknown as ArchiveExport;
+    expect(() => readArchivePart(withArchive(TODAY_SAVE, broken))).toThrow('Hand-Archiv in der Datei ist nicht lesbar');
   });
 });

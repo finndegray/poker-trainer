@@ -16,12 +16,18 @@ import bounty from '../review/fixtures/bounty.txt?raw';
 import dailyClassic from '../review/fixtures/daily-classic.txt?raw';
 import steps from '../review/fixtures/step-satellites.txt?raw';
 import { answerRetraining, forgetRetraining, retrainingOf, syncRetraining } from '../game/retraining';
+import { parseHand } from '../review/parse';
+import type { TournamentKind } from '../review/tournament-kind';
+import { TEST_HAND_ID, TEST_PLAYED_AT, sevenTwoOpen } from '../situation/test-situations';
+import { situationText } from '../situation/text';
 import { type SaveState, emptyState } from '../storage/schema';
 import {
   LOCK_NEWER_ARCHIVE,
   LOCK_OTHER_TAB,
   LOCK_READ_ONLY,
   type RetrainingSink,
+  SITUATION_NAME_INVALID,
+  SITUATION_SAVED_ALREADY,
   type ReviewStoreDeps,
   createReviewStore,
 } from './review-store';
@@ -569,5 +575,96 @@ describe('retraining queue (spec 10)', () => {
     const { store: later } = await setup({ backend, retraining: sink });
     await later.syncRetraining();
     expect(calls[1]).toEqual(['318096259', 3, true]);
+  });
+});
+
+describe('saved situations (Plan 10)', () => {
+  const text = (kind: TournamentKind = 'normal', id = TEST_HAND_ID) => situationText(sevenTwoOpen(kind, id), TEST_PLAYED_AT);
+
+  it('rates a hand with its analyzer and writes nothing', async () => {
+    const { store, backend } = await setup();
+    const analysis = await store.rateHand(parseHand(text()));
+    expect(analysis.decisions).toHaveLength(1);
+    expect(analysis.decisions[0]).toMatchObject({ eventIndex: 10, rating: { model: 'chart', grade: { verdict: 'wrong' } } });
+    expect(backend.dump()).toEqual({});
+  });
+
+  it('saves a situation with its name into the tournament of its kind and feeds the retraining queue', async () => {
+    const fed: [string, string[]][] = [];
+    const sink: RetrainingSink = { synced: () => new Set(), sync: (id, candidates) => fed.push([id, candidates.map((c) => c.key)]), forget: () => {} };
+    const { store, backend } = await setup({ retraining: sink });
+    const saved = await store.saveSituation(text(), '  72o UTG · 40 BB ');
+    expect(saved).toMatchObject({
+      id: 'SIT-normal',
+      name: 'Eigene Situationen',
+      kind: 'normal',
+      detectedKind: 'normal',
+      handIds: [TEST_HAND_ID],
+      summary: { hands: 1, preflopErrors: 1, postflopErrors: 0 },
+    });
+    expect(readHand(backend.dump()[handKey(TEST_HAND_ID)])).toMatchObject({
+      name: '72o UTG · 40 BB',
+      tournamentId: 'SIT-normal',
+      playedAt: TEST_PLAYED_AT,
+      dateKey: '2026-10-14',
+    });
+    expect(fed).toEqual([['SIT-normal', [`${TEST_HAND_ID}:10`]]]);
+
+    await store.saveSituation(text('satellit', 'SIT2'), 'Satellit');
+    expect(store.getSnapshot().tournaments.find((t) => t.id === 'SIT-satellit')).toMatchObject({
+      name: 'Eigene Situationen (Satellit)',
+      kind: 'satellit',
+      summary: { preflopErrors: 0, hints: 1 },
+    });
+    expect(fed.at(-1)).toEqual(['SIT-satellit', []]);
+    await store.saveSituation(text('normal', 'SIT3'), 'Noch eine');
+    expect(store.getSnapshot().tournaments.find((t) => t.id === 'SIT-normal')!.handIds).toEqual([TEST_HAND_ID, 'SIT3']);
+  });
+
+  it('refuses a second save, a broken text, an invalid name and imported hands', async () => {
+    const { store } = await setup();
+    await store.saveSituation(text(), 'A');
+    await expect(store.saveSituation(text(), 'A')).rejects.toThrow(SITUATION_SAVED_ALREADY);
+    await expect(store.saveSituation(text('normal', 'SIT9').replace('Total pot ', 'Total pot 1'), 'A')).rejects.toThrow(
+      'Diese Situation kann ich nicht speichern: Pot passt nicht zu den Einsätzen',
+    );
+    await expect(store.saveSituation(text('normal', 'SIT9'), '   ')).rejects.toThrow(SITUATION_NAME_INVALID);
+    await expect(store.saveSituation(text('normal', 'SIT9'), 'x'.repeat(61))).rejects.toThrow(SITUATION_NAME_INVALID);
+    await expect(store.saveSituation(bounty, 'GG')).rejects.toThrow('Das ist keine eigene Situation.');
+    expect(store.getSnapshot().tournaments.map((t) => t.handIds)).toEqual([[TEST_HAND_ID]]);
+  });
+
+  it('saves only in the writing tab and never in read-only mode; rating stays possible', async () => {
+    const readOnly = await setup({ readOnly: true });
+    await expect(readOnly.store.saveSituation(text(), 'A')).rejects.toThrow(LOCK_READ_ONLY);
+    expect(readOnly.backend.dump()).toEqual({});
+    const reader = await setup({ canWrite: () => false });
+    await expect(reader.store.saveSituation(text(), 'A')).rejects.toThrow(LOCK_OTHER_TAB);
+    expect(reader.backend.dump()).toEqual({});
+    expect((await reader.store.rateHand(parseHand(text()))).decisions).toHaveLength(1);
+  });
+
+  it('keeps the name through export, merge and a new rating', async () => {
+    const source = await setup();
+    await source.store.saveSituation(text(), '72o UTG');
+    const { part } = await source.store.exportPart();
+    expect(part!.tournaments).toEqual([{ id: 'SIT-normal', name: 'Eigene Situationen', kind: 'normal' }]);
+    expect(part!.hands).toEqual([{ id: TEST_HAND_ID, tournamentId: 'SIT-normal', raw: text(), name: '72o UTG' }]);
+
+    const target = await setup();
+    expect(await target.store.mergeExport(part!)).toMatchObject({ imported: 1 });
+    const key = handKey(TEST_HAND_ID);
+    expect(readHand(target.backend.dump()[key]).name).toBe('72o UTG');
+
+    // Rated by an older analysis version: rated again in the background, the name stays.
+    const tKey = tournamentKey('SIT-normal');
+    const oldHand = { ...readHand(target.backend.dump()[key]), analysisVersion: 1, analysis: { version: 1, decisions: [] } };
+    const oldTournament = { ...readTournament(target.backend.dump()[tKey]), analysisVersion: 1 };
+    await target.backend.setMany([[key, JSON.stringify(oldHand)], [tKey, JSON.stringify(oldTournament)]]);
+    const fresh = createReviewStore({ backend: target.backend, data: getPushFoldData(), canWrite: () => true, readOnly: false, pause: async () => {} });
+    await fresh.load();
+    await fresh.refreshStale();
+    expect(readHand(target.backend.dump()[key])).toMatchObject({ name: '72o UTG', analysisVersion: ANALYSIS_VERSION });
+    expect(readHand(target.backend.dump()[key]).analysis.decisions).toHaveLength(1);
   });
 });

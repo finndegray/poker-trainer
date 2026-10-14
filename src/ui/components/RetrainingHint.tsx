@@ -6,7 +6,7 @@ export function RetrainingHint({ origin }: { origin: RetrainingOrigin | undefine
   if (!origin) return null;
   return (
     <p className="retraining-hint" role="note">
-      {retrainingHint(origin.playedAt)}
+      {retrainingHint(origin.playedAt, origin.key)}
     </p>
   );
 }

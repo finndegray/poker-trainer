@@ -57,8 +57,9 @@ export class HandParseError extends Error {
   }
 }
 
+// Hand ids: "TM…" from GGPoker, "SIT…" for situations entered in the app; their tournaments are "SIT-<kind>".
 const HEADER =
-  /^Poker Hand #(TM\d+): Tournament #(\d+), (.+) Hold'em No Limit - Level(\d+)\(([\d,]+)\/([\d,]+)(?:\(([\d,]+)\))?\) - (\d{4})\/(\d{2})\/(\d{2}) (\d{2}:\d{2}:\d{2})$/;
+  /^Poker Hand #((?:TM|SIT)\d+): Tournament #(\d+|SIT-(?:normal|satellit|bounty)), (.+) Hold'em No Limit - Level(\d+)\(([\d,]+)\/([\d,]+)(?:\(([\d,]+)\))?\) - (\d{4})\/(\d{2})\/(\d{2}) (\d{2}:\d{2}:\d{2})$/;
 const TABLE = /^Table '(.+)' (\d+)-max Seat #(\d+) is the button$/;
 const SEAT = /^Seat (\d+): (\S+) \(([\d,]+) in chips\)$/;
 const POST = /^(\S+): posts (the ante|small blind|big blind) ([\d,]+)( and is all-in)?$/;

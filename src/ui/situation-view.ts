@@ -1,4 +1,4 @@
-import { formatBb, formatChipsBb, streetLabel } from '../app/format';
+import { formatBb, formatChipsBb, reviewActionLabel, streetLabel } from '../app/format';
 import { handClassOf, handName } from '../engine/cards';
 import { POSITION_LABELS } from '../engine/positions';
 import {
@@ -10,6 +10,11 @@ import {
   type SituationStep,
 } from '../situation/model';
 import type { Choice } from './components/ActionBar';
+import type { HeroDecision } from '../review/analysis';
+import type { HandEvent } from '../review/parse';
+import { POSTFLOP_VERDICT_LABELS } from '../review/postflop-text';
+import { type DecisionOutcome, decisionOutcome } from '../review/summary';
+import type { TournamentKind } from '../review/tournament-kind';
 import { describeEvent } from './replay-model';
 
 export type SituationChoice = 'empty' | 'fold' | 'check' | 'call' | 'size' | 'allIn';
@@ -34,8 +39,35 @@ export function sizeOf(legal: LegalActions, input: string): number | null {
   return Math.min(range.max, Math.max(range.min, chips));
 }
 
+/**
+ * Name of a raise at `index` (an event index, `events.length` for the action now), as in the training:
+ * preflop the first raise is „Raise“ (open), then „3-Bet“, „4-Bet“ …; after the flop always „Raise“.
+ */
+export function raiseWordAt(events: readonly HandEvent[], index: number): string {
+  let raises = 0;
+  for (let i = 0; i < index && i < events.length; i++) {
+    const event = events[i];
+    if (event.type === 'board') return 'Raise';
+    if (event.type === 'action' && event.action === 'raise') raises++;
+  }
+  return raises === 0 ? 'Raise' : `${raises + 2}-Bet`;
+}
+
+/** A hero decision of the summary, e.g. „3-Bet auf 6,6 BB“. */
+export function situationActionLabel(decision: HeroDecision, events: readonly HandEvent[]): string {
+  const label = reviewActionLabel(decision, CHIPS_PER_BB);
+  return decision.action === 'raise' ? label.replace(/^Raise/, raiseWordAt(events, decision.eventIndex)) : label;
+}
+
+/** The verdict word of the summary: preflop as in the training, postflop „Passt“, „Fraglich“ or „Wahrscheinlich Fehler“. */
+export function situationVerdictLabel(decision: HeroDecision, kind: TournamentKind, labels: Record<DecisionOutcome, string>): string {
+  const outcome = decisionOutcome(decision, kind);
+  const { rating } = decision;
+  return rating.model === 'postflop' && outcome !== 'hint' ? POSTFLOP_VERDICT_LABELS[rating.verdict] : labels[outcome];
+}
+
 /** The buttons for the player to act, in the style of the training (keyboard shortcut first). */
-export function situationChoices(legal: LegalActions, size: number | null): Choice<SituationChoice>[] {
+export function situationChoices(legal: LegalActions, size: number | null, raiseWord = 'Raise'): Choice<SituationChoice>[] {
   const choices: Choice<SituationChoice>[] = [];
   if (legal.empty) choices.push({ action: 'empty', label: 'Platz leer', keys: ['l'] });
   if (legal.fold) choices.push({ action: 'fold', label: 'Fold', keys: ['f'] });
@@ -43,7 +75,7 @@ export function situationChoices(legal: LegalActions, size: number | null): Choi
   if (legal.call) choices.push({ action: 'call', label: `Call ${bb(legal.call.amount)}${legal.call.allIn ? ' · All-in' : ''}`, keys: ['c'] });
   const range = legal.bet ?? legal.raise;
   if (range && size !== null) {
-    if (size < range.max) choices.push({ action: 'size', label: legal.bet ? `Bet ${bb(size)}` : `Raise auf ${bb(size)}`, keys: ['r', 'b'], primary: true });
+    if (size < range.max) choices.push({ action: 'size', label: legal.bet ? `Bet ${bb(size)}` : `${raiseWord} auf ${bb(size)}`, keys: ['r', 'b'], primary: true });
     choices.push({ action: 'allIn', label: `All-in ${bb(range.max)}`, keys: ['a'], primary: size >= range.max });
   }
   return choices;

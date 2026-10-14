@@ -1,10 +1,9 @@
 import { LOCK_OTHER_TAB, LOCK_READ_ONLY } from '../../app/review-store';
 import { useCallback, useMemo, useState } from 'react';
-import { formatBb, reviewActionLabel, streetLabel } from '../../app/format';
+import { formatBb, streetLabel } from '../../app/format';
 import type { Card } from '../../engine/cards';
 import { POSITIONS, POSITION_LABELS, type Position } from '../../engine/positions';
 import { MAX_HAND_NAME, type TournamentRecord } from '../../review/archive';
-import { decisionOutcome } from '../../review/summary';
 import { TOURNAMENT_KINDS, TOURNAMENT_KIND_LABELS, type TournamentKind } from '../../review/tournament-kind';
 import {
   CHIPS_PER_BB,
@@ -35,7 +34,10 @@ import {
   lastEventText,
   parseBbInput,
   promptText,
+  raiseWordAt,
+  situationActionLabel,
   situationChoices,
+  situationVerdictLabel,
   sizeOf,
   stepOf,
 } from '../situation-view';
@@ -112,7 +114,10 @@ function ActInput({ state, onStep }: { state: SituationState; onStep: (step: Sit
   const legal = state.phase.type === 'act' ? state.phase.legal : null;
   const [input, setInput] = useState('');
   const size = legal ? sizeOf(legal, input) : null;
-  const choices = useMemo(() => (legal ? situationChoices(legal, size) : []), [legal, size]);
+  const choices = useMemo(
+    () => (legal ? situationChoices(legal, size, raiseWordAt(state.events, state.events.length)) : []),
+    [legal, size, state.events],
+  );
   const onAction = useCallback((choice: SituationChoice) => legal && onStep(stepOf(choice, legal, size)), [legal, onStep, size]);
   if (!legal) return null;
   const range = legal.bet ?? legal.raise;
@@ -224,6 +229,7 @@ function Summary({ situation, rating, onBack, onDiscard, onReview, now, saved, o
   const [name, setName] = useState(() => defaultSituationName(situation.setup));
   const [error, setError] = useState<string | null>(null);
   const decisions = rating.status === 'ready' ? rating.analysis.decisions : [];
+  const events = useMemo(() => playSituation(situation).events, [situation]);
   const shown = decisions.find((d) => d.eventIndex === selected) ?? decisions[decisions.length - 1];
 
   const save = async () => {
@@ -252,7 +258,7 @@ function Summary({ situation, rating, onBack, onDiscard, onReview, now, saved, o
               {decisions.map((d) => (
                 <li key={d.eventIndex}>
                   <button type="button" className="btn" aria-pressed={d === shown} onClick={() => setSelected(d.eventIndex)}>
-                    {streetLabel(d.street)} · {reviewActionLabel(d, CHIPS_PER_BB)} · {OUTCOME_LABELS[decisionOutcome(d, kind)]}
+                    {streetLabel(d.street)} · {situationActionLabel(d, events)} · {situationVerdictLabel(d, kind, OUTCOME_LABELS)}
                   </button>
                 </li>
               ))}

@@ -22,8 +22,9 @@ export function useSituationRating(store: ReviewStore, situation: Situation | nu
     try {
       const rated = whole ? situation : upToLastHeroAction(situation);
       return rated && rated.steps.length > 0 ? situationText(rated, playedAt) : null;
-    } catch {
-      // An empty text cannot be parsed: shown as "Diese Situation kann ich nicht bewerten".
+    } catch (error) {
+      // An empty text cannot be parsed: shown as "Diese Situation kann ich nicht bewerten". Logged, so model bugs do not stay silent.
+      console.error(error);
       return '';
     }
   }, [situation, playedAt, whole]);

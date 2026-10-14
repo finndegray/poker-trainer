@@ -45,6 +45,7 @@ describe('rating a situation', () => {
   });
 
   it('rates every decision the same, live (hand cut after it) and in the whole hand', () => {
+    let checked = 0;
     for (const hand of fixtures) {
       const situation = situationFromHand(hand);
       if (!situation) continue;
@@ -56,7 +57,9 @@ describe('rating a situation', () => {
         const last = live[live.length - 1];
         expect(last.eventIndex).toBe(playSituation(prefix).heroEvents.at(-1));
         expect(last).toEqual(whole.find((d) => d.eventIndex === last.eventIndex));
+        checked++;
       }
     }
+    expect(checked).toBeGreaterThan(0);
   });
 });

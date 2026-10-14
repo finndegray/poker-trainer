@@ -4,7 +4,7 @@ import { StatusBar } from '../components/StatusBar';
 import { useGame } from '../GameContext';
 import './screens.css';
 
-export type Screen = 'home' | 'training' | 'preflop' | 'daily' | 'run' | 'review' | 'stats' | 'settings';
+export type Screen = 'home' | 'training' | 'preflop' | 'daily' | 'run' | 'review' | 'situation' | 'stats' | 'settings';
 
 type Tile = { title: string; text: string; button: string; target: Screen; locked: boolean };
 
@@ -46,6 +46,14 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => voi
       button: 'Hände prüfen',
       target: 'review',
       // Viewing the archive stays possible in read-only mode; the import itself is blocked there.
+      locked: false,
+    },
+    {
+      title: 'Situation analysieren',
+      text: 'Eine Hand nach dem Spiel selbst nachstellen – jede deiner Entscheidungen wird sofort bewertet',
+      button: 'Situation nachstellen',
+      target: 'situation',
+      // Analysing never writes; saving is blocked inside the screen when the archive is not writable.
       locked: false,
     },
     { title: 'Statistik', text: 'Trefferquote, Schwachstellen und Verlauf', button: 'Statistik ansehen', target: 'stats', locked: false },

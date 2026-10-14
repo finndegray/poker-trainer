@@ -195,3 +195,18 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Hände prüfen' })).toBeTruthy();
   });
 });
+
+describe('App: situation analysis (Plan 10)', () => {
+  it('opens the situation analysis from its tile and from the hand review, also in read-only mode', async () => {
+    const { loaded } = renderWithStore(<App />, { info: { readOnly: true } });
+    await act(() => loaded);
+    const tile = screen.getByRole('button', { name: 'Situation nachstellen' }) as HTMLButtonElement;
+    expect(tile.disabled).toBe(false);
+    fireEvent.click(tile);
+    expect(screen.getByRole('region', { name: 'Grunddaten' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '← Menü' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hände prüfen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Situation nachstellen' }));
+    expect(screen.getByRole('region', { name: 'Grunddaten' })).toBeTruthy();
+  });
+});

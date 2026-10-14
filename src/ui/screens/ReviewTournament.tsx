@@ -5,6 +5,7 @@ import { handClassOf, handName } from '../../engine/cards';
 import { POSITION_LABELS } from '../../engine/positions';
 import { positionsOf } from '../../review/hand-model';
 import { HERO } from '../../review/parse';
+import { isSituationTournament } from '../../review/situation-tournaments';
 import { type DecisionOutcome, type HandFilter, errorsPer100, handOutcome, handSeverity, matchesFilter } from '../../review/summary';
 import { TOURNAMENT_KINDS, TOURNAMENT_KIND_LABELS, type TournamentKind } from '../../review/tournament-kind';
 import { useReview } from '../ReviewContext';
@@ -36,7 +37,9 @@ export function sortedHands(hands: readonly ReviewHand[], kind: TournamentKind):
   );
 }
 
-function handLabel({ hand }: ReviewHand): string {
+/** A saved situation shows its name; an imported hand its cards and position. */
+function handLabel({ hand, record }: ReviewHand): string {
+  if (record.name) return record.name;
   const cards = hand.heroCards ? handName(handClassOf(hand.heroCards[0], hand.heroCards[1])) : '??';
   const position = positionsOf(hand)?.get(HERO);
   return `${cards}${position ? ` · ${POSITION_LABELS[position]}` : ''}`;
@@ -67,22 +70,27 @@ export function ReviewTournament({ open, onOpenHand, onSetKind, onDelete }: Prop
           {formatPlayedAt(tournament.firstPlayedAt)} · {formatHands(tournament.summary.hands)} · {errors} Fehler ·{' '}
           {formatPer100(errorsPer100(errors, tournament.summary.hands))} pro 100 Hände
         </p>
-        <label className="review-kind">
-          Art des Turniers
-          <select
-            aria-label="Art des Turniers"
-            value={kind}
-            disabled={!editable}
-            onChange={(event) => onSetKind(event.target.value as TournamentKind)}
-          >
-            {TOURNAMENT_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {TOURNAMENT_KIND_LABELS[k]}
-                {k === tournament.detectedKind ? ' (erkannt)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
+        {isSituationTournament(tournament.id) ? (
+          // The kind of a situation tournament is part of its id: a situation is saved with its kind.
+          <p className="muted">Art: {TOURNAMENT_KIND_LABELS[kind]} (beim Nachstellen gewählt)</p>
+        ) : (
+          <label className="review-kind">
+            Art des Turniers
+            <select
+              aria-label="Art des Turniers"
+              value={kind}
+              disabled={!editable}
+              onChange={(event) => onSetKind(event.target.value as TournamentKind)}
+            >
+              {TOURNAMENT_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {TOURNAMENT_KIND_LABELS[k]}
+                  {k === tournament.detectedKind ? ' (erkannt)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {kind !== 'normal' && <p className="muted">Satellit/Bounty – Standard-Chart nur bedingt gültig. Abweichungen zählen nicht als Fehler.</p>}
         {review.lockReason && <p className="muted">{review.lockReason}</p>}
         {review.progress !== null && <p className="muted">Während eines Imports nicht möglich.</p>}

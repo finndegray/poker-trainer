@@ -5,6 +5,8 @@ import bounty from '../../review/fixtures/bounty.txt?raw';
 import dailyClassic from '../../review/fixtures/daily-classic.txt?raw';
 import steps from '../../review/fixtures/step-satellites.txt?raw';
 import { LOCK_OTHER_TAB } from '../../app/review-store';
+import { TEST_PLAYED_AT, sevenTwoOpen } from '../../situation/test-situations';
+import { situationText } from '../../situation/text';
 import { renderWithStore } from '../test-utils';
 import { ReviewScreen } from './ReviewScreen';
 
@@ -235,5 +237,31 @@ describe('ReviewScreen hand view', () => {
 
 ${steps}`);
     expect(screen.getByText('Nachtraining: 3 Spots aus deinen Turnieren warten im Training.')).toBeTruthy();
+  });
+});
+
+describe('ReviewScreen with saved situations (Plan 10)', () => {
+  it('lists the situation tournaments, shows the names and keeps their kind fixed', async () => {
+    const utils = renderWithStore(<ReviewScreen onBack={() => {}} now={now} />);
+    await act(async () => {
+      await utils.loaded;
+      await utils.review.saveSituation(situationText(sevenTwoOpen('bounty'), TEST_PLAYED_AT), '72o UTG · 40 BB');
+    });
+    const row = screen.getByRole('row', { name: /Eigene Situationen \(Bounty\)/ });
+    expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual(['14.10.2026', 'Bounty', '1', '0', '0', '0']);
+    await openTournament('Eigene Situationen (Bounty)');
+    expect(screen.queryByLabelText('Art des Turniers')).toBeNull();
+    expect(screen.getByText('Art: Bounty (beim Nachstellen gewählt)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /72o UTG · 40 BB/ }));
+    expect(screen.getByText(/^72o UTG · 40 BB · 14\.10\.2026 18:05 · Level 1/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Hinweis' })).toBeTruthy();
+  });
+
+  it('starts a new situation from the overview', async () => {
+    const onSituation = vi.fn();
+    const { loaded } = renderWithStore(<ReviewScreen onBack={() => {}} onSituation={onSituation} now={now} />);
+    await act(() => loaded);
+    fireEvent.click(screen.getByRole('button', { name: 'Situation nachstellen' }));
+    expect(onSituation).toHaveBeenCalledOnce();
   });
 });

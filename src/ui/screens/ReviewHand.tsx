@@ -51,7 +51,7 @@ export function ReviewHand({ item, kind }: Props) {
   return (
     <>
       <p className="muted review-hand-head">
-        Hand #{hand.id.replace(/^TM/, '')} · {formatPlayedAt(hand.playedAt)} · Level {hand.level} ({formatCount(hand.smallBlind)}/
+        {record.name ?? `Hand #${hand.id.replace(/^TM/, '')}`} · {formatPlayedAt(hand.playedAt)} · Level {hand.level} ({formatCount(hand.smallBlind)}/
         {formatCount(hand.bigBlind)}, Ante {formatCount(hand.ante)}) · Stack {formatChipsBb(hero?.startChips ?? 0, hand.bigBlind)} BB
       </p>
       <TrainingLayout

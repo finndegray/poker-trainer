@@ -15,7 +15,9 @@ type View = { name: 'overview' } | { name: 'import' } | { name: 'tournament'; id
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const defaultNow = () => new Date();
 
-export function ReviewScreen({ onBack, now = defaultNow }: { onBack: () => void; now?: () => Date }) {
+type Props = { onBack: () => void; onSituation?: () => void; now?: () => Date };
+
+export function ReviewScreen({ onBack, onSituation, now = defaultNow }: Props) {
   const store = useReviewStore();
   const { reanalysis } = useReview();
   const [view, setView] = useState<View>({ name: 'overview' });
@@ -74,7 +76,14 @@ export function ReviewScreen({ onBack, now = defaultNow }: { onBack: () => void;
         <span className="muted">Hand-Review</span>
       </div>
       {message && <p role="alert">{message}</p>}
-      {view.name === 'overview' && <ReviewOverview now={now} onImport={() => setView({ name: 'import' })} onOpen={(id) => void openTournament(id)} />}
+      {view.name === 'overview' && (
+        <ReviewOverview
+          now={now}
+          onImport={() => setView({ name: 'import' })}
+          onOpen={(id) => void openTournament(id)}
+          onSituation={onSituation}
+        />
+      )}
       {view.name === 'import' && <ReviewImport onDone={() => setView({ name: 'overview' })} />}
       {view.name === 'tournament' &&
         (open ? (

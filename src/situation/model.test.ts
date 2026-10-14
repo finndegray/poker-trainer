@@ -151,10 +151,51 @@ describe('situation model: legal actions and sizes', () => {
     expect(legalOf(state)).toMatchObject({ position: 'CO', isHero: true, call: { amount: 700, allIn: false }, raise: null });
   });
 
-  it('posts a short blind all-in', () => {
-    const state = play(setupOf({ stacks: stacks(25, { BB: 1 }) }));
+  it('posts a short blind all-in but keeps the full big blind as the level for everybody else', () => {
+    const shortBb = setupOf({ hero: 'SB', stacks: stacks(25, { BB: 1 }) });
+    const state = play(shortBb);
     expect(state.events.find((e) => e.type === 'bigBlind')).toEqual({ type: 'bigBlind', player: 'Spieler8', amount: 700, allIn: true });
-    expect(legalOf(state).call).toEqual({ amount: 700, allIn: false });
+    expect(state.table.players.find((p) => p.position === 'BB')).toMatchObject({ streetBet: 700, allIn: true });
+    // TDA: a limp costs the full big blind, the first raise is measured from 800.
+    expect(legalOf(state).call).toEqual({ amount: 800, allIn: false });
+    expect(legalOf(state).raise).toEqual({ min: 1600, max: 19900 });
+    expect(legalOf(play(shortBb, raise(2))).raise).toEqual({ min: 2400, max: 19900 });
+    expect(legalOf(play(shortBb, ...folds(6))).call).toEqual({ amount: 400, allIn: false });
+  });
+
+  it('gives a limper back what the short big blind did not match', () => {
+    const state = play(setupOf({ hero: 'UTG', stacks: stacks(25, { BB: 1 }) }), CALL, ...folds(6));
+    expect(state.events.at(-1)).toEqual({ type: 'uncalled', player: 'Hero', amount: 100 });
+    expect(state.table.pot).toBe(800 + 400 + 700 + 700);
+    expect(state.phase).toEqual({ type: 'board', street: 'flop', count: 3, optional: true });
+  });
+
+  it('lets an opening bet reopen the action even when it is an all-in below 1 BB', () => {
+    const shortBtn = setupOf({ hero: 'BTN', stacks: stacks(25, { BTN: 1.5 }) });
+    const state = play(shortBtn, ...folds(5), CALL, CALL, CHECK, board('2c 7d 9h'), CHECK, CHECK, { type: 'bet', to: 999_999 });
+    expect(state.events.at(-1)).toMatchObject({ type: 'action', action: 'bet', amount: 300, allIn: true });
+    expect(legalOf(state)).toMatchObject({ position: 'SB', fold: true, call: { amount: 300, allIn: false }, raise: { min: 1100, max: 19100 } });
+  });
+
+  it('reopens the raise after several short all-ins that add up to a full raise', () => {
+    const shorts = setupOf({ hero: 'UTG', stacks: stacks(25, { LJ: 2.6, CO: 3.4 }) });
+    const allIn: SituationStep = { type: 'raise', to: 999_999 };
+    // The big blind calls, so somebody is left who could call a raise.
+    const both = play(shorts, raise(2), FOLD, allIn, FOLD, allIn, FOLD, FOLD, CALL);
+    expect(both.table.players.filter((p) => p.allIn).map((p) => [p.position, p.streetBet])).toEqual([
+      ['LJ', 1980],
+      ['CO', 2620],
+    ]);
+    expect(legalOf(both)).toMatchObject({ position: 'UTG', call: { amount: 1020, allIn: false }, raise: { min: 3420, max: 19900 } });
+    const one = play(shorts, raise(2), FOLD, allIn, ...folds(4), CALL);
+    expect(legalOf(one)).toMatchObject({ position: 'UTG', call: { amount: 380, allIn: false }, raise: null });
+  });
+
+  it('rejects a size that is not a number', () => {
+    const start = sit(setupOf());
+    expect(() => addStep(start, { type: 'raise', to: Number.NaN })).toThrow('Ungültiger Einsatz');
+    expect(() => addStep(start, { type: 'raise', to: Number.POSITIVE_INFINITY })).toThrow('Ungültiger Einsatz');
+    expect(() => addStep(start, { type: 'raise', to: 1600.5 })).toThrow('Ungültiger Einsatz');
   });
 
   it('suggests the usual sizes', () => {
@@ -188,6 +229,22 @@ describe('situation model: board, all-in, end and undo', () => {
     expect(playSituation(runout).phase).toEqual({ type: 'done', reason: 'showdown' });
     expect(playSituation(runout).table.board).toEqual(cards('2c 7d 9h Js 3s'));
     expect(() => addStep(sit(setupOf()), { type: 'end' })).toThrow('Die Hand ist noch nicht vorbei');
+  });
+
+  it('returns the uncalled excess in a multi-way pot with a short all-in and leaves no bets heads-up', () => {
+    const short = setupOf({ stacks: stacks(25, { CO: 1.5 }) });
+    const allIn: SituationStep = { type: 'raise', to: 999_999 };
+    const steps = [raise(2.2), ...folds(3), CALL, CALL, FOLD, allIn, FOLD, FOLD];
+    const coTurn = play(short, ...steps.slice(0, 4));
+    expect(legalOf(coTurn)).toMatchObject({ position: 'CO', isHero: true, call: { amount: 1100, allIn: true }, raise: null });
+    const state = play(short, ...steps);
+    expect(state.events.at(-1)).toEqual({ type: 'uncalled', player: 'Spieler8', amount: 19900 - 1760 });
+    expect(state.table.pot).toBe(800 + 400 + 1760 + 1100 + 1760 + 1760);
+    expect(state.table.players.find((p) => p.position === 'BB')).toMatchObject({ streetBet: 1760, stack: 19900 - 1760, allIn: false });
+    expect(state.phase).toEqual({ type: 'board', street: 'flop', count: 3, optional: true });
+    const flop = play(short, ...steps, board('2c 7d 9h'));
+    expect(flop.phase).toEqual({ type: 'board', street: 'turn', count: 1, optional: true });
+    expect(play(short, ...steps, { type: 'end' }).phase).toEqual({ type: 'done', reason: 'showdown' });
   });
 
   it('takes only unused board cards, as many as the street needs', () => {

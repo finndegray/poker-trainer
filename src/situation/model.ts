@@ -126,8 +126,11 @@ class Table {
   /** Highest street total so far and the size of the last full raise (both chips). */
   maxBet = 0;
   lastRaise = CHIPS_PER_BB;
-  /** Players who acted since the street began or since the last full raise. */
-  acted = new Set<string>();
+  /**
+   * Players who acted on this street, with the street level (`maxBet`) right after their last action. Cleared by an
+   * opening bet and by a full raise: then everybody may raise again.
+   */
+  acted = new Map<string, number>();
   lastActor: string | null = null;
   closed = false;
   collected = false;
@@ -157,7 +160,9 @@ class Table {
     for (const p of this.players) this.post(p, 'ante', ANTE_CHIPS);
     this.post(this.byPosition('SB'), 'smallBlind', SMALL_BLIND_CHIPS);
     this.post(this.byPosition('BB'), 'bigBlind', CHIPS_PER_BB);
-    this.maxBet = Math.max(...this.players.map((p) => p.streetBet));
+    // TDA: a big blind posted short all-in still sets the full level for everybody else (calls cost 800, the first
+    // raise is measured from 800); the part of the others' bets he cannot match goes back as an uncalled bet.
+    this.maxBet = CHIPS_PER_BB;
   }
 
   byPosition(position: Position): PlayerState {
@@ -230,14 +235,16 @@ class Table {
 
   legal(p: PlayerState): LegalActions {
     const toCall = Math.max(0, this.maxBet - p.streetBet);
-    const aggressive = p.stack > toCall && !this.acted.has(p.name) && this.othersCanAct(p);
+    // TDA: a player who already acted may raise again only when the raises since then add up to a full raise.
+    const level = this.acted.get(p.name);
+    const reopened = level === undefined || this.maxBet - level >= this.lastRaise;
+    const aggressive = p.stack > toCall && reopened && this.othersCanAct(p);
     const max = p.streetBet + p.stack;
     let bet: BetRange | null = null;
     let raise: BetRange | null = null;
     if (aggressive && this.maxBet === 0) bet = { min: Math.min(CHIPS_PER_BB, max), max };
     if (aggressive && this.maxBet > 0) {
-      const base = this.street === 'preflop' ? Math.max(this.maxBet, CHIPS_PER_BB) : this.maxBet;
-      raise = { min: Math.min(base + this.lastRaise, max), max };
+      raise = { min: Math.min(this.maxBet + this.lastRaise, max), max };
     }
     const seat = seatOf(p.position!);
     const legal: LegalActions = {
@@ -264,6 +271,7 @@ class Table {
     if (excess <= 0) return;
     top.stack += excess;
     top.streetBet -= excess;
+    this.maxBet = top.streetBet;
     this.pot -= excess;
     if (top.stack > 0) top.allIn = false;
     this.push({ type: 'uncalled', player: top.name, amount: excess });
@@ -292,7 +300,7 @@ class Table {
     const event = (action: ActionEvent['action'], amount: number, to: number | null): void => {
       const allIn = amount > 0 && this.pay(p, amount, true);
       if (action === 'fold') p.folded = true;
-      this.acted.add(p.name);
+      this.acted.set(p.name, this.maxBet);
       this.lastActor = p.name;
       this.anyAction = true;
       if (action === 'bet' || action === 'raise') this.lastAggressor = p.name;
@@ -312,11 +320,17 @@ class Table {
       case 'raise': {
         const range = step.type === 'bet' ? legal.bet : legal.raise;
         if (!range) illegal(step.type === 'bet' ? 'Bet ist hier nicht möglich' : 'Raise ist hier nicht möglich');
+        if (!Number.isFinite(step.to)) illegal('Ungültiger Einsatz');
         const to = Math.min(step.to, range!.max);
-        if (!Number.isInteger(to) || to < range!.min) illegal('Einsatz unter dem Minimum');
+        if (!Number.isInteger(to)) illegal('Ungültiger Einsatz');
+        if (to < range!.min) illegal('Einsatz unter dem Minimum');
         const raised = to - this.maxBet;
-        if (raised >= this.lastRaise) {
-          // A full bet or raise: everybody else may raise again. An all-in below that reopens nothing.
+        if (this.maxBet === 0) {
+          // An opening bet always reopens the action, even an all-in below 1 BB; the next raise is at least 1 BB.
+          this.lastRaise = Math.max(raised, CHIPS_PER_BB);
+          this.acted.clear();
+        } else if (raised >= this.lastRaise) {
+          // A full raise: everybody else may raise again. An all-in below that reopens nothing by itself.
           this.lastRaise = raised;
           this.acted.clear();
         }

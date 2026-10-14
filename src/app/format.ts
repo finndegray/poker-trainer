@@ -5,6 +5,7 @@ import type { Action, Verdict } from '../engine/pushfold';
 import type { SpotKind } from '../engine/spot-generator';
 import type { XpResult } from '../game/xp';
 import type { ActionType as ReviewActionType, Street as ReviewStreet } from '../review/parse';
+import { SITUATION_HAND_PREFIX } from '../review/situation-tournaments';
 
 const evNumber = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const MINUS = '−';
@@ -113,8 +114,12 @@ export function reviewActionLabel(a: ReviewActionInput, bigBlind: number): strin
   return a.allIn && a.action !== 'fold' && a.action !== 'check' ? `${text} · All-in` : text;
 }
 
-/** Spec 10: where a retraining spot comes from, "2026-10-12 15:46:28" → „Aus deinem Turnier vom 12.10.“. */
-export const retrainingHint = (playedAt: string): string => `Aus deinem Turnier vom ${playedAt.slice(8, 10)}.${playedAt.slice(5, 7)}.`;
+/**
+ * Spec 10: where a retraining spot comes from, "2026-10-12 15:46:28" → „Aus deinem Turnier vom 12.10.“; for a spot from
+ * a saved situation (key "SIT…:<event>") „Aus deiner Situation vom 12.10.“.
+ */
+export const retrainingHint = (playedAt: string, key = ''): string =>
+  `${key.startsWith(SITUATION_HAND_PREFIX) ? 'Aus deiner Situation' : 'Aus deinem Turnier'} vom ${playedAt.slice(8, 10)}.${playedAt.slice(5, 7)}.`;
 
 /** „1 Spot aus deinen Turnieren wartet im Training.“ / „3 Spots … warten …“. */
 export const formatRetrainingCount = (n: number): string =>

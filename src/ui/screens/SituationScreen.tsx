@@ -1,3 +1,4 @@
+import { LOCK_OTHER_TAB, LOCK_READ_ONLY } from '../../app/review-store';
 import { useCallback, useMemo, useState } from 'react';
 import { formatBb, reviewActionLabel, streetLabel } from '../../app/format';
 import type { Card } from '../../engine/cards';
@@ -167,7 +168,18 @@ function ShowInput({ state, onStep }: { state: SituationState; onStep: (step: Si
   return (
     <section className="panel situation-board" aria-label="Karten der Gegner">
       <p className="muted">Karten der Gegner (optional)</p>
-      {options.length > 1 && <FilterGroup label="Gegner" options={options} value={who} disabled={false} onChange={setVillain} />}
+      {options.length > 1 && (
+        <FilterGroup
+          label="Gegner"
+          options={options}
+          value={who}
+          disabled={false}
+          onChange={(p) => {
+            setVillain(p);
+            setPicked([]);
+          }}
+        />
+      )}
       <CardPicker label={`Karten von ${POSITION_LABELS[who]}`} selected={picked} used={new Set(state.usedCards)} max={2} onChange={setPicked} />
       <button
         type="button"
@@ -188,31 +200,42 @@ type SummaryProps = {
   onDiscard: () => void;
   onReview: () => void;
   now: () => Date;
+  saved: TournamentRecord | null;
+  onSaved: (record: TournamentRecord) => void;
+  saving: boolean;
+  onSaving: (saving: boolean) => void;
 };
 
+const SAVE_UNKNOWN_ERROR = 'Unbekannter Fehler';
+
+/** The reason saving is blocked, worded for the save button (the import texts stay as they are). */
+function saveLockText(reason: string): string {
+  if (reason === LOCK_OTHER_TAB) return 'Speichern ist nur in dem Tab möglich, der deinen Fortschritt speichert.';
+  if (reason === LOCK_READ_ONLY) return 'Speichern ist im Nur-Lesen-Modus nicht möglich.';
+  return `Speichern ist hier nicht möglich: ${reason}`;
+}
+
 /** Spec 3: every hero decision with its verdict; save with a name or discard. */
-function Summary({ situation, rating, onBack, onDiscard, onReview, now }: SummaryProps) {
+function Summary({ situation, rating, onBack, onDiscard, onReview, now, saved, onSaved, saving, onSaving }: SummaryProps) {
   const store = useReviewStore();
   const review = useReview();
   const { kind } = situation.setup;
   const [selected, setSelected] = useState<number | null>(null);
   const [name, setName] = useState(() => defaultSituationName(situation.setup));
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState<TournamentRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const decisions = rating.status === 'ready' ? rating.analysis.decisions : [];
   const shown = decisions.find((d) => d.eventIndex === selected) ?? decisions[decisions.length - 1];
 
   const save = async () => {
     setError(null);
-    setSaving(true);
+    onSaving(true);
     try {
       // playedAt is the moment of saving (local time), as the spec asks.
-      setSaved(await store.saveSituation(situationText(situation, playedAtOf(now())), name));
+      onSaved(await store.saveSituation(situationText(situation, playedAtOf(now())), name));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(e instanceof Error ? e.message : SAVE_UNKNOWN_ERROR);
     } finally {
-      setSaving(false);
+      onSaving(false);
     }
   };
 
@@ -253,10 +276,10 @@ function Summary({ situation, rating, onBack, onDiscard, onReview, now }: Summar
                 Name
                 <input value={name} maxLength={MAX_HAND_NAME} onChange={(e) => setName(e.target.value)} />
               </label>
-              {review.lockReason && <p className="muted">Speichern ist hier nicht möglich: {review.lockReason}</p>}
+              {review.lockReason && <p className="muted">{saveLockText(review.lockReason)}</p>}
               {error && <p role="alert">Speichern fehlgeschlagen: {error}</p>}
               <div className="situation-nav">
-                <button type="button" className="btn" onClick={onBack}>
+                <button type="button" className="btn" disabled={saving} onClick={onBack}>
                   ← Zurück
                 </button>
                 <button
@@ -267,7 +290,7 @@ function Summary({ situation, rating, onBack, onDiscard, onReview, now }: Summar
                 >
                   Speichern
                 </button>
-                <button type="button" className="btn" onClick={onDiscard}>
+                <button type="button" className="btn" disabled={saving} onClick={onDiscard}>
                   Verwerfen
                 </button>
               </div>
@@ -297,6 +320,8 @@ export function SituationScreen({ onBack, onReview, now = defaultNow }: Props) {
   const [draft, setDraft] = useState<Draft>(START_DRAFT);
   const [situation, setSituation] = useState<Situation | null>(null);
   const [summary, setSummary] = useState(false);
+  const [saved, setSaved] = useState<TournamentRecord | null>(null);
+  const [saving, setSaving] = useState(false);
   const [startedAt, setStartedAt] = useState(() => playedAtOf(now()));
   const state = useMemo(() => (situation ? playSituation(situation) : null), [situation]);
   const live = useSituationRating(store, summary ? null : situation, startedAt);
@@ -306,6 +331,7 @@ export function SituationScreen({ onBack, onReview, now = defaultNow }: Props) {
     const at = now();
     const setup = setupOf(draft, `SIT${at.getTime()}`);
     if (!setup) return;
+    setSaved(null);
     setStartedAt(playedAtOf(at));
     setSituation({ setup, steps: [] });
   };
@@ -316,19 +342,21 @@ export function SituationScreen({ onBack, onReview, now = defaultNow }: Props) {
     else setSituation(undoStep(situation));
   };
   const leave = () => {
-    if (situation && situation.steps.length > 0 && !window.confirm('Situation verwerfen?')) return;
+    if (saving) return;
+    if (situation && situation.steps.length > 0 && saved === null && !window.confirm('Situation verwerfen?')) return;
     onBack();
   };
   /** Back to the setup with the same entries; the next situation gets a new hand id. */
   const discard = () => {
     setSummary(false);
+    setSaved(null);
     setSituation(null);
   };
 
   return (
     <>
       <div className="screen-header">
-        <button type="button" className="btn btn--ghost" onClick={leave}>
+        <button type="button" className="btn btn--ghost" disabled={saving} onClick={leave}>
           ← Menü
         </button>
         <span className="muted">Situation analysieren</span>
@@ -337,7 +365,13 @@ export function SituationScreen({ onBack, onReview, now = defaultNow }: Props) {
       {!state || !situation ? (
         <SetupForm draft={draft} onChange={setDraft} onStart={start} />
       ) : summary ? (
-        <Summary situation={situation} rating={whole} onBack={() => setSummary(false)} onDiscard={discard} onReview={onReview} now={now} />
+        <Summary situation={situation} rating={whole} onBack={() => setSummary(false)} onDiscard={discard} onReview={onReview}
+          now={now}
+          saved={saved}
+          onSaved={setSaved}
+          saving={saving}
+          onSaving={setSaving}
+        />
       ) : (
         <TrainingLayout
           main={

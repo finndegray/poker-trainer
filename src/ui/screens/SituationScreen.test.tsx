@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LOCK_OTHER_TAB } from '../../app/review-store';
 import type { PersistenceInfo } from '../../app/persistence';
 import { handKey, memoryReviewBackend, readHand } from '../../review/archive';
 import { retrainingOf } from '../../game/retraining';
@@ -226,7 +225,7 @@ describe('SituationScreen: summary and saving', () => {
   it('blocks saving in another tab with the reason; discarding starts over with the same entries', async () => {
     const { archive } = await playToSummary({ info: { otherTabActive: true } });
     expect((button('Speichern') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(`Speichern ist hier nicht möglich: ${LOCK_OTHER_TAB}`)).toBeTruthy();
+    expect(screen.getByText('Speichern ist nur in dem Tab möglich, der deinen Fortschritt speichert.')).toBeTruthy();
     click('Verwerfen');
     expect(screen.getByRole('region', { name: 'Grunddaten' })).toBeTruthy();
     expect((button('Weiter') as HTMLButtonElement).disabled).toBe(false);
@@ -266,5 +265,73 @@ describe('SituationScreen: summary and saving', () => {
     confirm.mockReturnValue(true);
     click('← Menü');
     expect(onBack).toHaveBeenCalledTimes(2);
+  });
+
+  it('words the lock reason for saving, also in read-only mode', async () => {
+    await playToSummary({ readOnly: true });
+    expect((button('Speichern') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Speichern ist im Nur-Lesen-Modus nicht möglich.')).toBeTruthy();
+  });
+
+  it('does not ask to discard a situation that was saved', async () => {
+    const onBack = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await playToSummary({ onBack });
+    click('Speichern');
+    await screen.findByRole('status', {}, SLOW);
+    click('← Menü');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('locks back, discard and the menu while saving', async () => {
+    const onBack = vi.fn();
+    const { review } = await playToSummary({ onBack });
+    let finish: () => void = () => {};
+    vi.spyOn(review, 'saveSituation').mockReturnValue(new Promise((resolve) => (finish = () => resolve({ name: 'X' } as never))));
+    click('Speichern');
+    expect((button('← Zurück') as HTMLButtonElement).disabled).toBe(true);
+    expect((button('Verwerfen') as HTMLButtonElement).disabled).toBe(true);
+    expect((button('← Menü') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => finish());
+    expect(await screen.findByRole('status')).toBeTruthy();
+    expect((button('← Menü') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('shows a failing save as an alert; a non-Error failure gets a fixed text', async () => {
+    const { review } = await playToSummary();
+    const spy = vi.spyOn(review, 'saveSituation').mockRejectedValueOnce(new Error('Platte voll'));
+    click('Speichern');
+    expect((await screen.findByRole('alert')).textContent).toBe('Speichern fehlgeschlagen: Platte voll');
+    spy.mockRejectedValueOnce('boom');
+    click('Speichern');
+    await screen.findByText('Speichern fehlgeschlagen: Unbekannter Fehler');
+    expect((button('Speichern') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('keeps saving disabled for a blank name', async () => {
+    await playToSummary();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '   ' } });
+    expect((button('Speichern') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('names a situation with a decimal stack with a comma', async () => {
+    await playToSummary({ stack: '12,5' });
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('72o UTG · 12,5 BB');
+  });
+
+  it('resets the picked opponent cards when another opponent is chosen', async () => {
+    await startSituation({ position: 'BB' });
+    click(/^All-in 39,9 BB/);
+    for (let i = 0; i < 5; i++) click(/^Fold/);
+    click(/^Call/);
+    click(/^Call/);
+    click('Ohne restliches Board beenden');
+    pickCards('Karten von UTG', 'Pik Dame');
+    click('SB');
+    expect(screen.getByRole('group', { name: 'Karten von SB' })).toBeTruthy();
+    click('UTG');
+    const picker = screen.getByRole('group', { name: 'Karten von UTG' });
+    expect(within(picker).getByRole('button', { name: 'Pik Dame' }).getAttribute('aria-pressed')).not.toBe('true');
   });
 });

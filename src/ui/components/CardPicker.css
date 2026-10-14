@@ -1,0 +1,56 @@
+.card-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-picker__suit {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.card-picker__card {
+  appearance: none;
+  min-height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--card-black);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.card-picker__card--red {
+  color: var(--card-red);
+}
+
+.card-picker__card--picked {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
+.card-picker__card:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.card-picker__card[disabled] {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* Phones: each suit in two rows of seven, so every card keeps a tappable width. */
+@media (max-width: 600px) {
+  .card-picker__suit {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}

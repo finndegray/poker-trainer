@@ -1,7 +1,7 @@
 import { type Card, RANKS, rankOf, suitOf } from '../../engine/cards';
 import './PlayingCard.css';
 
-const SUIT_SYMBOLS = ['♣', '♦', '♥', '♠'];
+export const SUIT_SYMBOLS = ['♣', '♦', '♥', '♠'];
 const SUIT_NAMES = ['Kreuz', 'Karo', 'Herz', 'Pik'];
 const RANK_NAMES: Record<string, string> = { A: 'Ass', K: 'König', Q: 'Dame', J: 'Bube', T: 'Zehn' };
 

@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
-import { formatBb, streetLabel } from '../../app/format';
+import { formatBb, reviewActionLabel, streetLabel } from '../../app/format';
 import type { Card } from '../../engine/cards';
 import { POSITIONS, POSITION_LABELS, type Position } from '../../engine/positions';
+import { MAX_HAND_NAME, type TournamentRecord } from '../../review/archive';
+import { decisionOutcome } from '../../review/summary';
 import { TOURNAMENT_KINDS, TOURNAMENT_KIND_LABELS, type TournamentKind } from '../../review/tournament-kind';
 import {
   CHIPS_PER_BB,
@@ -16,7 +18,7 @@ import {
   playSituation,
   undoStep,
 } from '../../situation/model';
-import { playedAtOf } from '../../situation/text';
+import { playedAtOf, situationText } from '../../situation/text';
 import { ChoiceBar } from '../components/ActionBar';
 import { CardPicker } from '../components/CardPicker';
 import { FilterGroup, type Option } from '../components/FilterGroup';
@@ -25,9 +27,19 @@ import { ReviewDecisionPanel } from '../components/ReviewDecisionPanel';
 import { RtaNotice } from '../components/RtaNotice';
 import { TrainingLayout } from '../components/TrainingLayout';
 import { replayTableModel } from '../replay-model';
-import { useReviewStore } from '../ReviewContext';
-import { type SituationChoice, lastEventText, parseBbInput, promptText, situationChoices, sizeOf, stepOf } from '../situation-view';
+import { useReview, useReviewStore } from '../ReviewContext';
+import {
+  type SituationChoice,
+  defaultSituationName,
+  lastEventText,
+  parseBbInput,
+  promptText,
+  situationChoices,
+  sizeOf,
+  stepOf,
+} from '../situation-view';
 import { type SituationRating, useSituationRating } from '../useSituationRating';
+import { OUTCOME_LABELS } from './ReviewTournament';
 import './screens.css';
 import './situation.css';
 
@@ -145,6 +157,129 @@ function BoardInput({ state, onStep }: { state: SituationState; onStep: (step: S
   );
 }
 
+/** Spec 3, end: the cards of the opponents at the showdown are optional. */
+function ShowInput({ state, onStep }: { state: SituationState; onStep: (step: SituationStep) => void }) {
+  const [villain, setVillain] = useState<Position | null>(null);
+  const [picked, setPicked] = useState<Card[]>([]);
+  if (state.showable.length === 0) return null;
+  const who = villain !== null && state.showable.includes(villain) ? villain : state.showable[0];
+  const options = state.showable.map((p) => ({ value: p, label: POSITION_LABELS[p] }));
+  return (
+    <section className="panel situation-board" aria-label="Karten der Gegner">
+      <p className="muted">Karten der Gegner (optional)</p>
+      {options.length > 1 && <FilterGroup label="Gegner" options={options} value={who} disabled={false} onChange={setVillain} />}
+      <CardPicker label={`Karten von ${POSITION_LABELS[who]}`} selected={picked} used={new Set(state.usedCards)} max={2} onChange={setPicked} />
+      <button
+        type="button"
+        className="btn"
+        disabled={picked.length !== 2}
+        onClick={() => onStep({ type: 'show', position: who, cards: [picked[0], picked[1]] })}
+      >
+        Karten übernehmen
+      </button>
+    </section>
+  );
+}
+
+type SummaryProps = {
+  situation: Situation;
+  rating: SituationRating;
+  onBack: () => void;
+  onDiscard: () => void;
+  onReview: () => void;
+  now: () => Date;
+};
+
+/** Spec 3: every hero decision with its verdict; save with a name or discard. */
+function Summary({ situation, rating, onBack, onDiscard, onReview, now }: SummaryProps) {
+  const store = useReviewStore();
+  const review = useReview();
+  const { kind } = situation.setup;
+  const [selected, setSelected] = useState<number | null>(null);
+  const [name, setName] = useState(() => defaultSituationName(situation.setup));
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<TournamentRecord | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const decisions = rating.status === 'ready' ? rating.analysis.decisions : [];
+  const shown = decisions.find((d) => d.eventIndex === selected) ?? decisions[decisions.length - 1];
+
+  const save = async () => {
+    setError(null);
+    setSaving(true);
+    try {
+      // playedAt is the moment of saving (local time), as the spec asks.
+      setSaved(await store.saveSituation(situationText(situation, playedAtOf(now())), name));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <TrainingLayout
+      main={
+        <section className="panel situation-summary" aria-label="Zusammenfassung">
+          <h2 className="review-title">Zusammenfassung</h2>
+          {rating.status === 'pending' && <p className="muted">Die Hand wird bewertet …</p>}
+          {rating.status === 'failed' && <p role="alert">Diese Situation kann ich nicht bewerten.</p>}
+          {rating.status === 'ready' && decisions.length === 0 && <p className="muted">In dieser Hand hast du keine Entscheidung getroffen.</p>}
+          {decisions.length > 0 && (
+            <ol className="situation-decisions">
+              {decisions.map((d) => (
+                <li key={d.eventIndex}>
+                  <button type="button" className="btn" aria-pressed={d === shown} onClick={() => setSelected(d.eventIndex)}>
+                    {streetLabel(d.street)} · {reviewActionLabel(d, CHIPS_PER_BB)} · {OUTCOME_LABELS[decisionOutcome(d, kind)]}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+          {saved ? (
+            <>
+              <p role="status">Gespeichert in „{saved.name}“.</p>
+              <div className="situation-nav">
+                <button type="button" className="btn btn--gold" onClick={onDiscard}>
+                  Neue Situation
+                </button>
+                <button type="button" className="btn" onClick={onReview}>
+                  Im Hand-Review ansehen
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="situation-field">
+                Name
+                <input value={name} maxLength={MAX_HAND_NAME} onChange={(e) => setName(e.target.value)} />
+              </label>
+              {review.lockReason && <p className="muted">Speichern ist hier nicht möglich: {review.lockReason}</p>}
+              {error && <p role="alert">Speichern fehlgeschlagen: {error}</p>}
+              <div className="situation-nav">
+                <button type="button" className="btn" onClick={onBack}>
+                  ← Zurück
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--gold"
+                  disabled={!review.writable || saving || name.trim() === ''}
+                  onClick={() => void save()}
+                >
+                  Speichern
+                </button>
+                <button type="button" className="btn" onClick={onDiscard}>
+                  Verwerfen
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      }
+      side={shown && <ReviewDecisionPanel decision={shown} kind={kind} bigBlind={CHIPS_PER_BB} data={store.data} />}
+    />
+  );
+}
+
 /** The rating of the hero's last decision so far (live), or why there is none. */
 function RatingPanel({ rating, kind }: { rating: SituationRating; kind: TournamentKind }) {
   const { data } = useReviewStore();
@@ -155,13 +290,17 @@ function RatingPanel({ rating, kind }: { rating: SituationRating; kind: Tourname
   return last ? <ReviewDecisionPanel decision={last} kind={kind} bigBlind={CHIPS_PER_BB} data={data} /> : null;
 }
 
-export function SituationScreen({ onBack, now = defaultNow }: { onBack: () => void; now?: () => Date }) {
+type Props = { onBack: () => void; onReview: () => void; now?: () => Date };
+
+export function SituationScreen({ onBack, onReview, now = defaultNow }: Props) {
   const store = useReviewStore();
   const [draft, setDraft] = useState<Draft>(START_DRAFT);
   const [situation, setSituation] = useState<Situation | null>(null);
+  const [summary, setSummary] = useState(false);
   const [startedAt, setStartedAt] = useState(() => playedAtOf(now()));
   const state = useMemo(() => (situation ? playSituation(situation) : null), [situation]);
-  const live = useSituationRating(store, situation, startedAt);
+  const live = useSituationRating(store, summary ? null : situation, startedAt);
+  const whole = useSituationRating(store, summary ? situation : null, startedAt, true);
 
   const start = () => {
     const at = now();
@@ -180,6 +319,11 @@ export function SituationScreen({ onBack, now = defaultNow }: { onBack: () => vo
     if (situation && situation.steps.length > 0 && !window.confirm('Situation verwerfen?')) return;
     onBack();
   };
+  /** Back to the setup with the same entries; the next situation gets a new hand id. */
+  const discard = () => {
+    setSummary(false);
+    setSituation(null);
+  };
 
   return (
     <>
@@ -192,6 +336,8 @@ export function SituationScreen({ onBack, now = defaultNow }: { onBack: () => vo
       <RtaNotice />
       {!state || !situation ? (
         <SetupForm draft={draft} onChange={setDraft} onStart={start} />
+      ) : summary ? (
+        <Summary situation={situation} rating={whole} onBack={() => setSummary(false)} onDiscard={discard} onReview={onReview} now={now} />
       ) : (
         <TrainingLayout
           main={
@@ -206,10 +352,16 @@ export function SituationScreen({ onBack, now = defaultNow }: { onBack: () => vo
               {/* A new key per step resets the size field and the picked board cards. */}
               <ActInput key={`act-${situation.steps.length}`} state={state} onStep={onStep} />
               <BoardInput key={`board-${situation.steps.length}`} state={state} onStep={onStep} />
+              <ShowInput key={`show-${situation.steps.length}`} state={state} onStep={onStep} />
               <div className="situation-nav">
                 <button type="button" className="btn" onClick={back}>
                   ← Zurück
                 </button>
+                {state.phase.type === 'done' && (
+                  <button type="button" className="btn btn--gold" onClick={() => setSummary(true)}>
+                    Zur Zusammenfassung
+                  </button>
+                )}
               </div>
             </>
           }
